@@ -1,0 +1,35 @@
+name: Test and lint
+
+on:
+  push:
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  lint:
+    timeout-minutes: 5
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: 1.95
+          components: clippy,rustfmt
+
+      - name: Verify formatting
+        run: RUST_LOG=debug RUST_BACKTRACE=1 cargo test --all-targets --all-features --verbose
+      - name: Verify linting
+        run: cargo clippy --all-targets --all-features -- --deny=warnings
+
+  test:
+    timeout-minutes: 5
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: 1.95
+
+      - name: Run tests
+        run: RUST_LOG=debug RUST_BACKTRACE=1 cargo test --all-targets --all-features --verbose
