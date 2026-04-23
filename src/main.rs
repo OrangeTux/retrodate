@@ -1,15 +1,15 @@
-use color_eyre::eyre::{Report, Result};
+use color_eyre::eyre::{Report, Result, WrapErr};
 use jiff::civil::{Date, DateTime};
 use regex::Regex;
 use std::{
     collections::HashMap,
     sync::atomic::{AtomicBool, Ordering},
 };
+use ureq::http::Uri;
 
 static VERBOSE: AtomicBool = AtomicBool::new(false);
 
 /// Find assets on Immich which have a date in their file name.
-/// Set the creation date of these assets.
 #[derive(argh::FromArgs)]
 struct Args {
     /// API key providing access to Immich's API. It requires permissions 'asset.read' and 'asset.update'.
@@ -35,8 +35,10 @@ fn main() -> Result<()> {
     VERBOSE.store(args.verbose, Ordering::Relaxed);
 
     let client = Client {
-        host: args.host.clone(),
-        api_key: args.api_key.clone(),
+        host: args.host.parse().wrap_err_with(|| {
+            format!("failed to parse URL of the Immich HTTP API '{}', it should have the format of http://192.168.178.1:2283/api or https://example.com/api", args.host)
+        })?,
+        api_key: args.api_key,
     };
 
     let re = Regex::new(r"(\d{8})(?:[_-](\d{6}))?").unwrap();
@@ -155,7 +157,7 @@ struct ExifInfo {
 #[derive(Debug)]
 struct Client {
     api_key: String,
-    host: String,
+    host: Uri,
 }
 
 fn get_assets_by_filename(file_name: &str, client: &Client) -> Result<Vec<Asset>> {
