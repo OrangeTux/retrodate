@@ -20,6 +20,7 @@ struct Args {
 }
 
 fn main() -> Result<()> {
+    color_eyre::install()?;
     let args: Args = argh::from_env();
 
     let client = Client {
