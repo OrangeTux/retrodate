@@ -1,3 +1,4 @@
+use color_eyre::eyre::{Report, Result};
 use jiff::civil::{Date, DateTime};
 use regex::Regex;
 use std::collections::HashMap;
@@ -9,6 +10,7 @@ struct Args {
     #[argh(option)]
     api_key: String,
 
+    /// URL of the immich API
     #[argh(option)]
     host: String,
 
@@ -17,7 +19,7 @@ struct Args {
     apply: bool,
 }
 
-fn main() {
+fn main() -> Result<()> {
     let args: Args = argh::from_env();
 
     let client = Client {
@@ -26,9 +28,8 @@ fn main() {
     };
 
     let re = Regex::new(r"(\d{8})(?:[_-](\d{6}))?").unwrap();
-    // for year in 2000..2027  {
-    for year in 2015..2016 {
-        let assets = get_assets_by_filename(&format!("{year}"), &client).unwrap();
+    for year in 2000..2027 {
+        let assets = get_assets_by_filename(&format!("{year}"), &client)?;
         println!(
             "Found {} assets that have {} in their file name.",
             assets.len(),
@@ -37,10 +38,10 @@ fn main() {
 
         for asset in assets {
             let Some(datetime) = extract_datetime_from_asset(&asset, &re) else {
-                // println!(
-                //     "Skipping {}, file name does not include a date(time).",
-                //     asset.original_file_name
-                // );
+                println!(
+                    "Skipping {}, file name does not include a date(time).",
+                    asset.original_file_name
+                );
                 continue;
             };
 
@@ -51,9 +52,7 @@ fn main() {
                 continue;
             }
 
-            let Some(asset) = get_asset_by_id(&asset.id, &client) else {
-                continue;
-            };
+            let asset = get_asset_by_id(&asset.id, &client)?;
 
             if let Some(exif_info) = asset.exif_info
                 && let Some(original_date_time) = exif_info.date_time_original
@@ -81,10 +80,12 @@ fn main() {
             };
 
             if args.apply {
-                let _ = set_assets_date_time(&asset.id, &datetime, &client).unwrap();
+                let _ = set_assets_date_time(&asset.id, &datetime, &client)?;
             }
         }
     }
+
+    Ok(())
 }
 
 fn extract_datetime_from_asset(asset: &Asset, re: &Regex) -> Option<DateTime> {
@@ -109,6 +110,7 @@ fn extract_datetime_from_asset(asset: &Asset, re: &Regex) -> Option<DateTime> {
 
     let time = time.as_str();
 
+    // These lookups should be safe, since the regex matches on exactly 6 characters.
     let hour: i8 = time[0..2].parse().ok()?;
     let minutes: i8 = time[2..4].parse().ok()?;
     let seconds: i8 = time[4..6].parse().ok()?;
@@ -152,67 +154,64 @@ struct Client {
     host: String,
 }
 
-fn get_assets_by_filename(file_name: &str, client: &Client) -> Option<Vec<Asset>> {
+fn get_assets_by_filename(file_name: &str, client: &Client) -> Result<Vec<Asset>> {
     let url = format!("{}/search/metadata", client.host);
 
-    let mut result = ureq::post(&url)
+    let body: search_asset::Read = ureq::post(&url)
         .header("x-api-key", &client.api_key)
         .send_json(HashMap::from([("originalFileName", file_name)]))
-        .inspect_err(|err| {
-            eprintln!(
-                "Whoops, request for metadata of '{}' failed with {err:?}",
-                &file_name
-            );
-        })
-        .ok()?;
+        .map_err(|error| explain_ureq_error(error, &url))?
+        .body_mut()
+        .read_json()
+        .map_err(|error| explain_ureq_error(error, &url))?;
 
-    let body: search_asset::Read = result.body_mut().read_json().unwrap();
-
-    if body.assets.items.is_empty() {
-        return None;
-    }
-
-    Some(body.assets.items)
+    Ok(body.assets.items)
 }
 
-fn get_asset_by_id(id: &str, client: &Client) -> Option<Asset> {
+fn get_asset_by_id(id: &str, client: &Client) -> Result<Asset> {
     let url = format!("{}/assets/{}", client.host, id);
 
-    let mut result = ureq::get(&url)
+    let asset: Asset = ureq::get(&url)
         .header("x-api-key", &client.api_key)
         .call()
-        .inspect_err(|err| {
-            eprintln!("Whoops, request for asset '{}' failed with {err:?}", &id);
-        })
-        .ok()?;
+        .map_err(|error| explain_ureq_error(error, &url))?
+        .body_mut()
+        .read_json()
+        .map_err(|error| explain_ureq_error(error, &url))?;
 
-    let asset: Asset = result.body_mut().read_json().unwrap();
-
-    Some(asset)
+    Ok(asset)
 }
 
-fn set_assets_date_time(
-    id: &str,
-    datetime: &jiff::civil::DateTime,
-    client: &Client,
-) -> Option<Asset> {
+fn set_assets_date_time(id: &str, datetime: &DateTime, client: &Client) -> Result<Asset> {
     let url = format!("{}/assets/{}", client.host, id);
 
-    println!("{datetime}");
-    let mut result = ureq::put(&url)
+    let asset = ureq::put(&url)
         .header("x-api-key", &client.api_key)
         .send_json(HashMap::from([(
             "dateTimeOriginal",
             format!("{}", datetime),
         )]))
-        .inspect_err(|err| {
-            eprintln!("Whoops, request for asset '{}' failed with {err:?}", &id);
-        })
-        .ok()?;
+        .map_err(|error| explain_ureq_error(error, &url))?
+        .body_mut()
+        .read_json()
+        .map_err(|error| explain_ureq_error(error, &url))?;
 
-    let asset: Asset = result.body_mut().read_json().unwrap();
+    Ok(asset)
+}
 
-    Some(asset)
+// Add some context errors that occur when interacting with Immich's HTTP API.
+fn explain_ureq_error(error: ureq::Error, url: &str) -> Report {
+    let explanation = match error {
+        ureq::Error::StatusCode(401) => "not authorized, please verify the API key",
+        ureq::Error::StatusCode(403) => {
+            "the API key doesn't have correct permissions, make sure to enable the permissions asset.read and asset.update"
+        }
+        ureq::Error::StatusCode(404) => "are you sure the location of the Immich API is correct?",
+        ureq::Error::Json(_) => "failed to parse the JSON received from endpoint",
+        _ => return Report::new(error).wrap_err(format!("interaction with {url} failed")),
+    };
+
+    Report::new(error).wrap_err(format!("interaction with {url} failed: {explanation}"))
 }
 
 #[cfg(test)]
