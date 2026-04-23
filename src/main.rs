@@ -1,12 +1,18 @@
 use color_eyre::eyre::{Report, Result};
 use jiff::civil::{Date, DateTime};
 use regex::Regex;
-use std::collections::HashMap;
+use std::{
+    collections::HashMap,
+    sync::atomic::{AtomicBool, Ordering},
+};
 
-/// Find all assets which file name include a year.
+static VERBOSE: AtomicBool = AtomicBool::new(false);
+
+/// Find assets on Immich which have a date in their file name.
+/// Set the creation date of these assets.
 #[derive(argh::FromArgs)]
 struct Args {
-    /// API key providing access to Immich's API
+    /// API key providing access to Immich's API. It requires permissions 'asset.read' and 'asset.update'.
     #[argh(option)]
     api_key: String,
 
@@ -14,14 +20,19 @@ struct Args {
     #[argh(option)]
     host: String,
 
-    /// if yes, assets is updated with a new date.
-    #[argh(option, default = "false")]
+    /// set the creation date of an asset.
+    #[argh(switch)]
     apply: bool,
+
+    /// explain what is being done
+    #[argh(switch, short = 'v')]
+    verbose: bool,
 }
 
 fn main() -> Result<()> {
     color_eyre::install()?;
     let args: Args = argh::from_env();
+    VERBOSE.store(args.verbose, Ordering::Relaxed);
 
     let client = Client {
         host: args.host.clone(),
@@ -31,18 +42,18 @@ fn main() -> Result<()> {
     let re = Regex::new(r"(\d{8})(?:[_-](\d{6}))?").unwrap();
     for year in 2000..2027 {
         let assets = get_assets_by_filename(&format!("{year}"), &client)?;
-        println!(
+        debug(format!(
             "Found {} assets that have {} in their file name.",
             assets.len(),
             year
-        );
+        ));
 
         for asset in assets {
             let Some(datetime) = extract_datetime_from_asset(&asset, &re) else {
-                println!(
+                debug(format!(
                     "Skipping {}, file name does not include a date(time).",
                     asset.original_file_name
-                );
+                ));
                 continue;
             };
 
@@ -63,25 +74,21 @@ fn main() -> Result<()> {
                     if (*original_date_time - datetime).get_days() <= 1 {
                         continue;
                     };
-                    println!(
-                        "Date of {} will be corrected from {:?} to {:?}",
+                    debug(format!(
+                        "Date of {} will be updated from {:?} to {:?}",
                         asset.original_file_name, original_date_time, datetime,
-                    );
-                } else {
-                    println!(
-                        "Date of {} will be  set to {:?}",
-                        asset.original_file_name, datetime,
-                    );
+                    ));
                 }
-            } else {
-                println!(
-                    "Date of {} will be  set to {:?}",
-                    asset.original_file_name, datetime,
-                );
-            };
+            }
 
             if args.apply {
                 let _ = set_assets_date_time(&asset.id, &datetime, &client)?;
+                println!("Date of {} set to {:?}", asset.original_file_name, datetime,);
+            } else {
+                println!(
+                    "Date of {} will be set to {:?}. Run script with --apply to apply the change.",
+                    asset.original_file_name, datetime,
+                );
             }
         }
     }
@@ -97,10 +104,10 @@ fn extract_datetime_from_asset(asset: &Asset, re: &Regex) -> Option<DateTime> {
         .as_str()
         .parse()
         .inspect_err(|err| {
-            eprintln!(
+            debug(format!(
                 "Failed to parse the match '{}' as a date: {err:?}",
                 caps.get(1).unwrap().as_str()
-            )
+            ))
         })
         .ok()?;
 
@@ -118,21 +125,17 @@ fn extract_datetime_from_asset(asset: &Asset, re: &Regex) -> Option<DateTime> {
     Some(date.at(hour, minutes, seconds, 0))
 }
 
-mod search_asset {
-    use super::*;
+#[derive(serde::Deserialize, Debug)]
+#[serde(rename_all = "camelCase")]
+struct Read {
+    assets: Results,
+}
 
-    #[derive(serde::Deserialize, Debug)]
-    #[serde(rename_all = "camelCase")]
-    pub struct Read {
-        pub assets: Results,
-    }
-
-    #[derive(serde::Deserialize, Debug)]
-    #[serde(rename_all = "camelCase")]
-    pub struct Results {
-        #[serde(alias = "assets")]
-        pub items: Vec<Asset>,
-    }
+#[derive(serde::Deserialize, Debug)]
+#[serde(rename_all = "camelCase")]
+struct Results {
+    #[serde(alias = "assets")]
+    items: Vec<Asset>,
 }
 
 #[derive(serde::Deserialize, Debug)]
@@ -146,7 +149,7 @@ struct Asset {
 #[derive(serde::Deserialize, Debug, Clone)]
 #[serde(rename_all = "camelCase")]
 struct ExifInfo {
-    pub date_time_original: Option<String>,
+    date_time_original: Option<String>,
 }
 
 #[derive(Debug)]
@@ -158,7 +161,7 @@ struct Client {
 fn get_assets_by_filename(file_name: &str, client: &Client) -> Result<Vec<Asset>> {
     let url = format!("{}/search/metadata", client.host);
 
-    let body: search_asset::Read = ureq::post(&url)
+    let body: Read = ureq::post(&url)
         .header("x-api-key", &client.api_key)
         .send_json(HashMap::from([("originalFileName", file_name)]))
         .map_err(|error| explain_ureq_error(error, &url))?
@@ -215,10 +218,14 @@ fn explain_ureq_error(error: ureq::Error, url: &str) -> Report {
     Report::new(error).wrap_err(format!("interaction with {url} failed: {explanation}"))
 }
 
+fn debug(message: String) {
+    if VERBOSE.load(Ordering::Relaxed) {
+        println!("{message}");
+    }
+}
+
 #[cfg(test)]
 mod test {
-    use crate::search_asset;
-
     #[test]
     fn test() {
         let input = r#"{
@@ -269,6 +276,6 @@ mod test {
     "total": 1
   }
 }"#;
-        let _: search_asset::Read = serde_json::from_str(input).unwrap();
+        let _: super::Read = serde_json::from_str(input).unwrap();
     }
 }
