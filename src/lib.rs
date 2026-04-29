@@ -118,7 +118,6 @@ fn get_assets_by_filename(file_name: &str, client: &Client) -> Result<Vec<Asset>
     let body: Search = ureq::post(&url)
         .header("x-api-key", &client.api_key)
         .config()
-        // .timeout_global(Some(Duration::from_secs(1)))
         .build()
         .send_json(HashMap::from([("originalFileName", file_name)]))
         .map_err(|error| explain_ureq_error(error, &url))?
@@ -239,12 +238,6 @@ pub struct ExifInfo {
 #[serde(rename_all = "camelCase")]
 pub struct Query {
     pub original_file_name: String,
-}
-
-impl PartialEq<Query> for Asset {
-    fn eq(&self, other: &Query) -> bool {
-        self.original_file_name == other.original_file_name
-    }
 }
 
 #[derive(Deserialize, Serialize, Debug)]

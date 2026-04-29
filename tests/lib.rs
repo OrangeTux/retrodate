@@ -3,7 +3,7 @@ mod env;
 use env::Immich;
 use set_date_for_undated_assets::{App, Asset, Client, ExifInfo, get_asset_by_id};
 
-/// Simulate the Immich API with 1 dateless asset.
+/// Test the business logic against an Immich fake.
 /// First, this test creates an App instance and verifies that the date of the asset is _not_ set.
 /// Then, an App instance is created with "apply_changes()" and the test verifies that the date of the asset _is_ set.
 #[test]
@@ -27,8 +27,8 @@ fn test_app() {
             original_file_name: String::from("Screenshot_20230927.jpg"),
             exif_info: None,
         },
-        // Asset contains a date that is outside the range  App is looking for.
-        // It only looks for assets which have the a year 2000 or later in their filename.
+        // Asset contains a date that is outside the range the App is looking for.
+        // It only looks for assets with a year of 2000 or later in their filename.
         Asset {
             id: String::from("4"),
             original_file_name: String::from("Screenshot_19980927_200215.jpg"),
@@ -60,7 +60,7 @@ fn test_app() {
         })
     );
     let asset = get_asset_by_id("2", &client).unwrap();
-    assert!(asset.exif_info.is_none(),);
+    assert!(asset.exif_info.is_none());
     let asset = get_asset_by_id("3", &client).unwrap();
     assert_eq!(
         asset.exif_info,
@@ -70,5 +70,5 @@ fn test_app() {
     );
 
     let asset = get_asset_by_id("4", &client).unwrap();
-    assert!(asset.exif_info.is_none(),);
+    assert!(asset.exif_info.is_none());
 }
