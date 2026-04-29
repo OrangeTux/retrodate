@@ -1,0 +1,62 @@
+name: Release retrodate
+
+on:
+  push:
+
+
+jobs:
+  # Build binaries for several platforms.
+  # The artifacts this build produces are used by other jobs.
+  build-release:
+    name: '${{ matrix.job.target }} (${{ matrix.job.os }})'
+    runs-on: ${{ matrix.job.os }}
+    strategy:
+      matrix:
+        job:
+          # - { target: aarch64-unknown-linux-gnu   , os: ubuntu-24.04, use-cross: true }
+          - { target: aarch64-unknown-linux-musl  , os: ubuntu-24.04, use-cross: true }
+          # - { target: arm-unknown-linux-gnueabihf , os: ubuntu-24.04, use-cross: true }
+          - { target: arm-unknown-linux-musleabihf, os: ubuntu-24.04, use-cross: true }
+          # - { target: x86_64-apple-darwin         , os: macos-26-intel                }
+          # - { target: aarch64-apple-darwin        , os: macos-26                      }
+          # - { target: x86_64-pc-windows-gnu       , os: windows-2025                  }
+          # - { target: x86_64-pc-windows-msvc      , os: windows-2025                  }
+          # - { target: aarch64-pc-windows-msvc     , os: windows-11-arm                }
+          # - { target: x86_64-unknown-linux-gnu    , os: ubuntu-24.04, use-cross: true }
+          - { target: x86_64-unknown-linux-musl   , os: ubuntu-24.04, use-cross: true }
+    env:
+      BUILD_CMD: "${{ matrix.job.use-cross && 'cross' || 'cargo' }}"
+      target: ${{ matrix.job.target }}
+      name: ${{ needs.crate_metadata.outputs.name }}
+    steps:
+      - name: Checkout source code
+        uses: actions/checkout@v6
+    
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          targets: ${{ matrix.job.target }}
+          toolchain: 1.95
+
+      - name: Download `binstall`.
+        if: matrix.job.use-cross
+        uses: cargo-bins/cargo-binstall@v1.18.1
+
+      - name: Install `cross` and compile artifact
+        run: |
+          cargo binstall \
+            --version=0.2.5 \
+            --no-confirm \
+            cross
+      - name: Show version information (Rust, cargo, GCC)
+        shell: bash
+        run: |
+          gcc --version || true
+          rustup -V
+          rustup toolchain list
+          rustup default
+          cargo -V
+          rustc -V
+
+      - name: Build
+        shell: bash
+        run: $BUILD_CMD build --locked --release --target="${target}"
