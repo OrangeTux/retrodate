@@ -74,7 +74,7 @@ jobs:
 
           # Setup paths
           BIN_NAME="retrodate-${target}${EXE_suffix}"
-          BIN_PATH="target/${target}/release/retrodate${EXE_suffix}"
+          BIN_PATH="target/${target}/release/${BIN_PATH}"
 
           mv -v "target/${target}/release/retrodate${EXE_suffix}" "${BIN_PATH}"
 
