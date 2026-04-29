@@ -1,5 +1,5 @@
 use color_eyre::eyre::{Result, WrapErr};
-use set_date_for_undated_assets::{App, Args, Client, VERBOSE};
+use retrodate::{App, Args, Client, VERBOSE};
 use std::sync::atomic::Ordering;
 
 fn main() -> Result<()> {
