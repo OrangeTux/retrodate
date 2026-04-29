@@ -79,6 +79,11 @@ jobs:
           # Let subsequent steps know where to find the binary
           echo "BIN_PATH=${BIN_PATH}" >> $GITHUB_OUTPUT
           echo "BIN_NAME=${BIN_NAME}" >> $GITHUB_OUTPUT
+
+          echo "${BIN_NAME}"
+          echo "${BIN_PATH}"
+          ls "${BIN_PATH}"
+
       - name: "Artifact upload: tarball"
         id: upload-tarball
         uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7
