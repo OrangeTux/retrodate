@@ -1,7 +1,7 @@
-mod env;
-
 use env::Immich;
-use set_date_for_undated_assets::{App, Asset, Client, ExifInfo, get_asset_by_id};
+use retrodate::{App, Asset, Client, ExifInfo, get_asset_by_id};
+
+mod env;
 
 /// Test the business logic against an Immich fake.
 /// First, this test creates an App instance and verifies that the date of the asset is _not_ set.
