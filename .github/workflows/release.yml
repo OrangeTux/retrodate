@@ -47,6 +47,7 @@ jobs:
             --version=0.2.5 \
             --no-confirm \
             cross
+
       - name: Show version information (Rust, cargo, GCC)
         shell: bash
         run: |
@@ -60,3 +61,27 @@ jobs:
       - name: Build
         shell: bash
         run: $BUILD_CMD build --locked --release --target="${target}"
+
+      - name: Set binary name & path
+        id: bin
+        shell: bash
+        run: |
+          # Figure out suffix of binary
+          EXE_suffix=""
+          case ${target} in
+            *-pc-windows-*) EXE_suffix=".exe" ;;
+          esac;
+
+          # Setup paths
+          BIN_NAME="${name}${EXE_suffix}"
+          BIN_PATH="target/${target}/release/${BIN_NAME}"
+
+          # Let subsequent steps know where to find the binary
+          echo "BIN_PATH=${BIN_PATH}" >> $GITHUB_OUTPUT
+          echo "BIN_NAME=${BIN_NAME}" >> $GITHUB_OUTPUT
+      - name: "Artifact upload: tarball"
+        id: upload-tarball
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7
+        with:
+          name: ${{ steps.bash.outputs.BIN_NAME}}
+          path: ${{ steps.bash.outputs.BIN_PATH}}
