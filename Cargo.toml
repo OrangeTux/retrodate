@@ -12,4 +12,5 @@ serde = { version = "1.0.228", default-features = false, features = ["derive"] }
 ureq = { version = "3.3.0", default-features = false, features = ["json", "rustls"] }
 
 [dev-dependencies]
+tiny_http = { version = "0.12.0", default-features = false }
 serde_json = { version = "1.0.149", default-features = false }
