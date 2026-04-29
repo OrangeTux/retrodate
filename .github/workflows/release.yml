@@ -73,16 +73,26 @@ jobs:
           esac;
 
           # Setup paths
-          BIN_NAME="retrodate${EXE_suffix}"
-          BIN_PATH="target/${target}/release/${BIN_NAME}"
+          BIN_NAME="retrodate-${target}${EXE_suffix}"
+          BIN_PATH="target/${target}/release/retrodate${EXE_suffix}"
+
+          mv -v "target/${target}/release/retrodate${EXE_suffix}" "${BIN_PATH}"
 
           # Let subsequent steps know where to find the binary
           echo "BIN_PATH=${BIN_PATH}" >> $GITHUB_OUTPUT
           echo "BIN_NAME=${BIN_NAME}" >> $GITHUB_OUTPUT
 
-      - name: "Artifact upload: tarball"
-        id: upload-tarball
+      - name: "Artifact upload"
+        id: upload
         uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7
         with:
-          name: ${{ steps.bin.outputs.BIN_NAME }}
+          name: ${{ steps.bin.outputs.BIN_NAME }}-${{ matrix.job.target }}
           path: ${{ steps.bin.outputs.BIN_PATH }}
+
+      - name: Publish archives and packages
+        uses: softprops/action-gh-release@b4309332981a82ec1c5618f44dd2e27cc8bfbfda # v3.0.0
+        # if: steps.is-release.outputs.IS_RELEASE
+        with:
+          files: |
+            ${{ steps.package.outputs.PKG_PATH }}
+            ${{ steps.debian-package.outputs.DPKG_PATH }}
