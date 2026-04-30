@@ -2,6 +2,7 @@
 name = "retrodate"
 version = "0.1.0"
 edition = "2024"
+repository = "https://github.com/OrangeTux/retrodate"
 
 [dependencies]
 argh = { version = "0.1.19", default-features = false, features = ["help"] }
@@ -14,3 +15,8 @@ ureq = { version = "3.3.0", default-features = false, features = ["json", "rustl
 [dev-dependencies]
 tiny_http = { version = "0.12.0", default-features = false }
 serde_json = { version = "1.0.149", default-features = false }
+
+# The profile that 'dist' will build with
+[profile.dist]
+inherits = "release"
+lto = "thin"
