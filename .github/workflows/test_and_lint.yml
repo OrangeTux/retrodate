@@ -1,0 +1,33 @@
+name: Test and lint
+
+on:
+  push:
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  lint:
+    timeout-minutes: 5
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: 1.95
+          components: clippy,rustfmt
+
+      - name: Run lint script
+        run: bash scripts/lint.sh
+
+  test:
+    timeout-minutes: 5
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: 1.95
+
+      - name: Run tests
+        run: bash scripts/test.sh
