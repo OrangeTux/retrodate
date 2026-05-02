@@ -135,7 +135,7 @@ impl Builder {
             client: Client {
                 host,
                 api_key,
-                timeout: Duration::from_secs(1),
+                timeout: Duration::from_secs(5),
             },
             from_year: 2000,
             until_year: current_year(),
