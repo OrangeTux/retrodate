@@ -379,8 +379,10 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f00b5dbd620d61dfdcb6007c9c1f6054ebd75319f163d886a9055cec1155073d"
 dependencies = [
  "jiff-static",
+ "log",
  "portable-atomic",
  "portable-atomic-util",
+ "serde_core",
 ]
 
 [[package]]

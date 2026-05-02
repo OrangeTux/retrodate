@@ -13,7 +13,7 @@ fn main() -> Result<()> {
         })?,
         api_key: args.api_key,
     };
-    let mut app = App::new(client);
+    let mut app = App::new(client, args.from_year, args.until_year as u16);
     if args.apply {
         app = app.apply_changes();
     }
