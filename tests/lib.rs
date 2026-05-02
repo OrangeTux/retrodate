@@ -1,5 +1,8 @@
+use std::time::{Duration, Instant};
+
 use env::Immich;
 use retrodate::{App, Asset, Client, ExifInfo, get_asset_by_id};
+use ureq::http::Uri;
 
 mod env;
 
@@ -38,20 +41,22 @@ fn test_app() {
 
     let immich = Immich::with_assets(assets);
     let addr = immich.listening_address();
-    let client = Client {
-        api_key: String::from("12"),
-        host: format!("http://{}/api", addr).parse().unwrap(),
-    };
+    let host: Uri = format!("http://{}/api", addr).parse().unwrap();
 
-    let app = App::new(client.clone(), 2000, 2026);
+    let app = App::builder(host.clone(), String::from("api-key")).build();
 
     let _handle = immich.spawn();
     app.run().unwrap();
 
+    let client = Client {
+        host: host.clone(),
+        api_key: String::from("api-key"),
+        timeout: Duration::from_secs(1),
+    };
     let asset = get_asset_by_id("1", &client).unwrap();
     assert_eq!(asset.exif_info, None);
 
-    let app = App::new(client.clone(), 2000, 2026).apply_changes();
+    let app = App::builder(host, String::from("api-key")).apply().build();
     app.run().unwrap();
     let asset = get_asset_by_id("1", &client).unwrap();
     assert_eq!(
@@ -72,4 +77,21 @@ fn test_app() {
 
     let asset = get_asset_by_id("4", &client).unwrap();
     assert!(asset.exif_info.is_none());
+}
+
+// Verify configuration the HTTP timeout works correctly.
+#[test]
+fn verify_http_timeout() {
+    let immich = Immich::with_assets(vec![]);
+    let addr = immich.listening_address();
+
+    let host: Uri = format!("http://{}/api", addr).parse().unwrap();
+
+    let app = App::builder(host.clone(), String::from("api-key"))
+        .http_timeout(Duration::from_secs(2))
+        .build();
+    let then = Instant::now();
+    assert!(app.run().is_err());
+    let now = Instant::now();
+    assert_eq!((now - then).as_secs(), 2);
 }

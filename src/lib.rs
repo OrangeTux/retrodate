@@ -9,6 +9,7 @@ use std::{
     collections::HashMap,
     ops::RangeInclusive,
     sync::atomic::{AtomicBool, Ordering},
+    time::Duration,
 };
 use ureq::http::Uri;
 
@@ -45,6 +46,10 @@ pub struct Args {
     /// the latest year to include in the search, defaults to the current year
     #[argh(option, default = "current_year()")]
     pub until_year: u16,
+
+    /// the maximum time in seconds for a single HTTP request against Immich's HTTP API
+    #[argh(option, default = "5")]
+    pub timeout: u64,
 }
 
 pub struct App {
@@ -55,17 +60,8 @@ pub struct App {
 }
 
 impl App {
-    pub fn new(client: Client, from_year: u16, until_year: u16) -> Self {
-        Self {
-            client,
-            apply: false,
-            year_range: from_year..=until_year,
-        }
-    }
-
-    pub fn apply_changes(mut self) -> Self {
-        self.apply = true;
-        self
+    pub fn builder(host: Uri, api_key: String) -> Builder {
+        Builder::new(host, api_key)
     }
 
     pub fn run(self) -> Result<()> {
@@ -126,10 +122,61 @@ impl App {
     }
 }
 
+pub struct Builder {
+    client: Client,
+    from_year: u16,
+    until_year: u16,
+    apply: bool,
+}
+
+impl Builder {
+    pub fn new(host: Uri, api_key: String) -> Self {
+        Builder {
+            client: Client {
+                host,
+                api_key,
+                timeout: Duration::from_secs(5),
+            },
+            from_year: 2000,
+            until_year: current_year(),
+            apply: false,
+        }
+    }
+
+    pub fn apply(mut self) -> Self {
+        self.apply = true;
+        self
+    }
+
+    pub fn from_year(mut self, year: u16) -> Self {
+        self.from_year = year;
+        self
+    }
+
+    pub fn until_year(mut self, year: u16) -> Self {
+        self.until_year = year;
+        self
+    }
+
+    pub fn http_timeout(mut self, timeout: Duration) -> Self {
+        self.client.timeout = timeout;
+        self
+    }
+
+    pub fn build(self) -> App {
+        App {
+            client: self.client,
+            year_range: self.from_year..=self.until_year,
+            apply: self.apply,
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct Client {
     pub api_key: String,
     pub host: Uri,
+    pub timeout: Duration,
 }
 
 fn get_assets_by_filename(file_name: &str, client: &Client) -> Result<Vec<Asset>> {
@@ -138,6 +185,7 @@ fn get_assets_by_filename(file_name: &str, client: &Client) -> Result<Vec<Asset>
     let body: Search = ureq::post(&url)
         .header("x-api-key", &client.api_key)
         .config()
+        .timeout_global(Some(client.timeout))
         .build()
         .send_json(HashMap::from([("originalFileName", file_name)]))
         .map_err(|error| explain_ureq_error(error, &url))?
@@ -153,6 +201,9 @@ pub fn get_asset_by_id(id: &str, client: &Client) -> Result<Asset> {
 
     let asset: Asset = ureq::get(&url)
         .header("x-api-key", &client.api_key)
+        .config()
+        .timeout_global(Some(client.timeout))
+        .build()
         .call()
         .map_err(|error| explain_ureq_error(error, &url))?
         .body_mut()
@@ -167,6 +218,9 @@ fn set_assets_date_time(id: &str, datetime: &DateTime, client: &Client) -> Resul
 
     let asset = ureq::put(&url)
         .header("x-api-key", &client.api_key)
+        .config()
+        .timeout_global(Some(client.timeout))
+        .build()
         .send_json(Patch {
             date_time_original: datetime.to_string(),
         })
