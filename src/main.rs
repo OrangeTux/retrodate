@@ -4,7 +4,7 @@ use std::sync::atomic::Ordering;
 
 fn main() -> Result<()> {
     color_eyre::install()?;
-    let args: Args = argh::from_env();
+    let mut args: Args = argh::from_env();
     VERBOSE.store(args.verbose, Ordering::Relaxed);
 
     let client = Client {
@@ -13,6 +13,12 @@ fn main() -> Result<()> {
         })?,
         api_key: args.api_key,
     };
+
+    // Be forgiving if a user swapped the values from --from-year and --until-year.
+    if args.from_year > args.until_year {
+        std::mem::swap(&mut args.from_year, &mut args.until_year);
+    }
+
     let mut app = App::new(client, args.from_year, args.until_year as u16);
     if args.apply {
         app = app.apply_changes();

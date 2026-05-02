@@ -14,7 +14,7 @@ use ureq::http::Uri;
 
 pub static VERBOSE: AtomicBool = AtomicBool::new(false);
 
-/// Retrodate is an utility to retroactively date images on Immich based on an image' filename.
+/// Retrodate is a utility to retroactively date images on Immich based on an image's filename.
 ///
 /// This tool queries Immich for all filenames that contain a year, e.g. 2021 in 20210901_115950.jpg.
 /// Then, the date (and optional time) is parsed from the filename.
@@ -43,8 +43,8 @@ pub struct Args {
     pub from_year: u16,
 
     /// the latest year to include in the search, defaults to the current year
-    #[argh(option, default = "Zoned::now().year()")]
-    pub until_year: i16,
+    #[argh(option, default = "current_year()")]
+    pub until_year: u16,
 }
 
 pub struct App {
@@ -101,9 +101,9 @@ impl App {
                 {
                     let original_date_time = original_date_time.parse::<DateTime>().ok();
                     if let Some(original_date_time) = &original_date_time {
-                        // if (*original_date_time - datetime).get_days() <= 1 {
-                        //     continue;
-                        // };
+                        if (*original_date_time - datetime).get_days() <= 1 {
+                            continue;
+                        };
                         debug(format!(
                             "Date of {} will be updated from {:?} to {:?}",
                             asset.original_file_name, original_date_time, datetime,
@@ -265,6 +265,12 @@ pub struct Query {
 pub struct Patch {
     pub date_time_original: String,
 }
+
+// Return the current year.
+fn current_year() -> u16 {
+    Zoned::now().year().try_into().unwrap_or(2030)
+}
+
 #[cfg(test)]
 mod test {
     #[test]
