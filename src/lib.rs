@@ -1,16 +1,25 @@
 use color_eyre::eyre::{Report, Result};
-use jiff::civil::{Date, DateTime};
+use jiff::{
+    Zoned,
+    civil::{Date, DateTime},
+};
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 use std::{
     collections::HashMap,
+    ops::RangeInclusive,
     sync::atomic::{AtomicBool, Ordering},
 };
 use ureq::http::Uri;
 
 pub static VERBOSE: AtomicBool = AtomicBool::new(false);
 
-/// Find assets on Immich which have a date in their file name.
+/// Retrodate is a utility to retroactively date images on Immich based on an image's filename.
+///
+/// This tool queries Immich for all filenames that contain a year, e.g. 2021 in 20210901_115950.jpg.
+/// Then, the date (and optional time) is parsed from the filename.
+///
+/// You can control search using the arguments --from-year and --until-year.
 #[derive(argh::FromArgs)]
 pub struct Args {
     /// API key providing access to Immich's API. It requires permissions 'asset.read' and 'asset.update'.
@@ -28,18 +37,29 @@ pub struct Args {
     /// explain what is being done
     #[argh(switch, short = 'v')]
     pub verbose: bool,
+
+    /// the earliest year to include in the search, defaults to 2000
+    #[argh(option, default = "2000")]
+    pub from_year: u16,
+
+    /// the latest year to include in the search, defaults to the current year
+    #[argh(option, default = "current_year()")]
+    pub until_year: u16,
 }
 
 pub struct App {
     client: Client,
     apply: bool,
+
+    year_range: RangeInclusive<u16>,
 }
 
 impl App {
-    pub fn new(client: Client) -> Self {
+    pub fn new(client: Client, from_year: u16, until_year: u16) -> Self {
         Self {
             client,
             apply: false,
+            year_range: from_year..=until_year,
         }
     }
 
@@ -50,7 +70,7 @@ impl App {
 
     pub fn run(self) -> Result<()> {
         let re = Regex::new(r"(\d{8})(?:[_-](\d{6}))?").unwrap();
-        for year in 2000..2027 {
+        for year in self.year_range {
             let assets = get_assets_by_filename(&format!("{year}"), &self.client)?;
             debug(format!(
                 "Found {} assets that have {} in their file name.",
@@ -245,6 +265,12 @@ pub struct Query {
 pub struct Patch {
     pub date_time_original: String,
 }
+
+// Return the current year.
+fn current_year() -> u16 {
+    Zoned::now().year().try_into().unwrap_or(2030)
+}
+
 #[cfg(test)]
 mod test {
     #[test]

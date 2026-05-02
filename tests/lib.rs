@@ -42,7 +42,8 @@ fn test_app() {
         api_key: String::from("12"),
         host: format!("http://{}/api", addr).parse().unwrap(),
     };
-    let app = App::new(client.clone());
+
+    let app = App::new(client.clone(), 2000, 2026);
 
     let _handle = immich.spawn();
     app.run().unwrap();
@@ -50,7 +51,7 @@ fn test_app() {
     let asset = get_asset_by_id("1", &client).unwrap();
     assert_eq!(asset.exif_info, None);
 
-    let app = App::new(client.clone()).apply_changes();
+    let app = App::new(client.clone(), 2000, 2026).apply_changes();
     app.run().unwrap();
     let asset = get_asset_by_id("1", &client).unwrap();
     assert_eq!(
