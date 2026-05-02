@@ -47,7 +47,7 @@ pub struct Args {
     #[argh(option, default = "current_year()")]
     pub until_year: u16,
 
-    /// the maximum timeout in seconds for interaction with Immich's HTTP API
+    /// the maximum time in seconds for a single HTTP request against Immich's HTTP API
     #[argh(option, default = "5")]
     pub timeout: u64,
 }
