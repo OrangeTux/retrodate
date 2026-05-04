@@ -13,8 +13,8 @@ This tool extracts the date (and time, if included) from the filename and uses t
 a pictures exif data.
 
 > [!NOTE]  
-> At the moment `retrodate` is only support loosely looking like YYYYMMDD (segments can be split by a `-` or `.` or other character),
-optionally followed by a time. Any other format, like DDMMYYYY, is not yet supported.
+> At the moment, `retrodate` only supports "2021-02-13", "2021.02.13 17:13", "20210213171312", and some
+variations on this format. Inputs starting with the day or month, e.g. 13-02-2021, are not yet supported.
 
 ## Usage
 
