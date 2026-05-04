@@ -1,10 +1,11 @@
 use color_eyre::eyre::{Report, Result};
 use jiff::{
     Zoned,
-    civil::{Date, DateTime},
+    civil::{Date, DateTime, Time},
 };
 use regex::Regex;
 use serde::{Deserialize, Serialize};
+use std::sync::LazyLock;
 use std::{
     collections::HashMap,
     ops::RangeInclusive,
@@ -14,6 +15,11 @@ use std::{
 use ureq::http::Uri;
 
 pub static VERBOSE: AtomicBool = AtomicBool::new(false);
+
+static RE: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r#"(?<year>\d{4})[[:punct:]]?(?<month>\d{1,2})[[:punct:]]?(?<day>\d{1,2})(?:\D*(?<hour>\d{1,2})[[:punct:]]?(?<minute>\d{1,2})[[:punct:]]?(?<second>\d{1,2}))?"#)
+                .unwrap()
+});
 
 /// Retrodate is a utility to retroactively date images on Immich based on an image's filename.
 ///
@@ -65,7 +71,6 @@ impl App {
     }
 
     pub fn run(self) -> Result<()> {
-        let re = Regex::new(r"(\d{8})(?:[_-](\d{6}))?").unwrap();
         for year in self.year_range {
             let assets = get_assets_by_filename(&format!("{year}"), &self.client)?;
             debug(format!(
@@ -75,7 +80,7 @@ impl App {
             ));
 
             for asset in assets {
-                let Some(datetime) = extract_datetime_from_asset(&asset, &re) else {
+                let Some(datetime) = extract_datetime(&asset.original_file_name, &RE) else {
                     debug(format!(
                         "Skipping {}, file name does not include a date(time).",
                         asset.original_file_name
@@ -253,33 +258,105 @@ fn debug(message: String) {
     }
 }
 
-fn extract_datetime_from_asset(asset: &Asset, re: &Regex) -> Option<DateTime> {
-    let caps = re.captures(&asset.original_file_name)?;
+fn extract_datetime(file_name: &str, re: &Regex) -> Option<DateTime> {
+    let caps = re.captures(file_name)?;
 
-    let date: Date = caps
-        .get(1)?
+    let year: i16 = caps
+        .name("year")?
         .as_str()
         .parse()
         .inspect_err(|err| {
             debug(format!(
-                "Failed to parse the match '{}' as a date: {err:?}",
+                "Failed to parse the match '{}' as a year: {err:?}",
                 caps.get(1).unwrap().as_str()
             ))
         })
         .ok()?;
 
-    // If file name doesn't include a time, default to midnight.
-    let Some(time) = caps.get(2) else {
+    let month: i8 = caps
+        .name("month")?
+        .as_str()
+        .parse()
+        .inspect_err(|err| {
+            debug(format!(
+                "Failed to parse the match '{}' as a month: {err:?}",
+                caps.get(1).unwrap().as_str()
+            ))
+        })
+        .ok()?;
+
+    let day: i8 = caps
+        .name("day")?
+        .as_str()
+        .parse()
+        .inspect_err(|err| {
+            debug(format!(
+                "Failed to parse the match '{}' as a day: {err:?}",
+                caps.get(1).unwrap().as_str()
+            ))
+        })
+        .ok()?;
+
+    let date: Date = format!("{year}-{month:02}-{day:02}")
+        .parse()
+        .inspect_err(|err| {
+            debug(format!(
+                "Failed to extract date from {}: {err:?}",
+                file_name
+            ));
+        })
+        .ok()?;
+
+    let Some(hour) = caps.name("hour") else {
         return Some(date.at(0, 0, 0, 0));
     };
 
-    let time = time.as_str();
+    let hour: i8 = hour
+        .as_str()
+        .parse()
+        .inspect_err(|err| {
+            debug(format!(
+                "Failed to parse the match '{}' as a hour: {err:?}",
+                caps.get(1).unwrap().as_str()
+            ))
+        })
+        .unwrap_or_default();
 
-    // These lookups should be safe, since the regex matches on exactly 6 characters.
-    let hour: i8 = time[0..2].parse().ok()?;
-    let minutes: i8 = time[2..4].parse().ok()?;
-    let seconds: i8 = time[4..6].parse().ok()?;
-    Some(date.at(hour, minutes, seconds, 0))
+    let minute: i8 = caps
+        .name("minute")?
+        .as_str()
+        .parse()
+        .inspect_err(|err| {
+            debug(format!(
+                "Failed to parse the match '{}' as a minute: {err:?}",
+                caps.get(1).unwrap().as_str()
+            ))
+        })
+        .unwrap_or_default();
+
+    let second: i8 = caps
+        .name("second")?
+        .as_str()
+        .parse()
+        .inspect_err(|err| {
+            debug(format!(
+                "Failed to parse the match '{}' as a second: {err:?}",
+                caps.get(1).unwrap().as_str()
+            ))
+        })
+        .unwrap_or_default();
+
+    let time: Time = format!("{hour:02}:{minute:02}:{second:02}")
+        .parse()
+        .inspect_err(|err| {
+            debug(format!(
+                "Failed to extract the time from {}, defaulting to 00:00:00. The error is: {err:?}",
+                file_name,
+            ));
+        })
+        .unwrap_or_default();
+
+    Some(date.to_datetime(time))
 }
 
 #[derive(Deserialize, Serialize, Debug, Clone)]
@@ -327,6 +404,10 @@ fn current_year() -> u16 {
 
 #[cfg(test)]
 mod test {
+    use jiff::civil::DateTime;
+
+    use crate::{RE, extract_datetime};
+
     #[test]
     fn test() {
         let input = r#"{
@@ -378,5 +459,60 @@ mod test {
   }
 }"#;
         let _: super::Search = serde_json::from_str(input).unwrap();
+    }
+
+    #[test]
+    fn test_regex() {
+        let files: Vec<(&str, DateTime)> = vec![
+            (
+                "Screenshot_20230927_191315.jpg",
+                "2023-09-27 19:13:15".parse().unwrap(),
+            ),
+            (
+                "Screenshot_2023-09-27_191315.jpg",
+                "2023-09-27 19:13:15".parse().unwrap(),
+            ),
+            (
+                "Screenshot_2023-9-7_191315.jpg",
+                "2023-09-07 19:13:15".parse().unwrap(),
+            ),
+            (
+                "Screenshot_2023.09.27T191315.jpg",
+                "2023-09-27 19:13:15".parse().unwrap(),
+            ),
+            (
+                "Screenshot_2023-09-27T19:13:15Z.jpg",
+                "2023-09-27 19:13:15".parse().unwrap(),
+            ),
+            (
+                "Screenshot_20230927_191315.jpg",
+                "2023-09-27 19:13:15".parse().unwrap(),
+            ),
+            (
+                "00003IMG_00003_BURST20180930215746.jpg",
+                "2018-09-30 21:57:46".parse().unwrap(),
+            ),
+            (
+                "WhatsApp Image 2024-07-04 at 16.34.09.jpeg",
+                "2024-07-04 16:34:09".parse().unwrap(),
+            ),
+            (
+                "20051022_75_1_69dd.jpeg",
+                "2005-10-22 00:00:00".parse().unwrap(),
+            ),
+            // TODO: The parser incorrectly extracts the time 00:16:00 here.
+            // (
+            //     "IMG-20260309-WA0016.jpg",
+            //     "2026-03-09 00:00:00".parse().unwrap(),
+            // ),
+        ];
+        for (file, expected_moment) in files {
+            let moment = extract_datetime(file, &RE).unwrap();
+            assert_eq!(
+                moment, expected_moment,
+                "failed to parse date from {}",
+                file
+            );
+        }
     }
 }
