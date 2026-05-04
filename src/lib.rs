@@ -98,18 +98,9 @@ impl App {
                 let asset = get_asset_by_id(&asset.id, &self.client)?;
 
                 if let Some(exif_info) = asset.exif_info
-                    && let Some(original_date_time) = exif_info.date_time_original
+                    && let Some(_) = exif_info.date_time_original
                 {
-                    let original_date_time = original_date_time.parse::<DateTime>().ok();
-                    if let Some(original_date_time) = &original_date_time {
-                        if (*original_date_time - datetime).get_days() <= 1 {
-                            continue;
-                        };
-                        debug(format!(
-                            "Date of {} will be updated from {:?} to {:?}",
-                            asset.original_file_name, original_date_time, datetime,
-                        ));
-                    }
+                    continue;
                 }
 
                 if self.apply {
