@@ -12,9 +12,15 @@ It's either the screenshot was taken or the moment the media was shared.
 This tool extracts the date (and time, if included) from the filename and uses the Immich API to correct
 a pictures exif data.
 
+> [!NOTE]  
+> At the moment `retrodate` is only support loosely looking like YYYYMMDD (segments can be split by a `-` or `.` or other character),
+optionally followed by a time. Any other format, like DDMMYYYY, is not yet supported.
+
 ## Usage
 
-First, obtain an [Immich API key](https://docs.immich.app/features/command-line-interface#obtain-the-api-key) with the permission "asset.read" and "asset.update".
+Obtain `retrodate` from the [releases](https://github.com/OrangeTux/retrodate/releases).
+
+Then, obtain an [Immich API key](https://docs.immich.app/features/command-line-interface#obtain-the-api-key) with the permission "asset.read" and "asset.update".
 
 ```bash
 $ export API_KEY="<your-key-here>"
@@ -49,6 +55,7 @@ Date of IMG_20180301_131212.jpg set to 2018-03-01T13:12:12.
 Date of 20190720_130508.jpg set to 2019-07-20T13:05:08.
 ```
 
+## 
 ## License
 
 This project is published under the [MIT license](LICENSE).
