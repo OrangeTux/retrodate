@@ -260,7 +260,7 @@ fn debug(message: String) {
 }
 
 fn extract_datetime_from_asset(file_name: &str, re: &Regex) -> Option<DateTime> {
-    let caps = re.captures(&file_name)?;
+    let caps = re.captures(file_name)?;
 
     let year: i16 = caps
         .name("year")?
