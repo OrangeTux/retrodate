@@ -80,8 +80,7 @@ impl App {
             ));
 
             for asset in assets {
-                let Some(datetime) = extract_datetime_from_asset(&asset.original_file_name, &RE)
-                else {
+                let Some(datetime) = extract_datetime(&asset.original_file_name, &RE) else {
                     debug(format!(
                         "Skipping {}, file name does not include a date(time).",
                         asset.original_file_name
@@ -259,7 +258,7 @@ fn debug(message: String) {
     }
 }
 
-fn extract_datetime_from_asset(file_name: &str, re: &Regex) -> Option<DateTime> {
+fn extract_datetime(file_name: &str, re: &Regex) -> Option<DateTime> {
     let caps = re.captures(file_name)?;
 
     let year: i16 = caps
@@ -280,7 +279,7 @@ fn extract_datetime_from_asset(file_name: &str, re: &Regex) -> Option<DateTime> 
         .parse()
         .inspect_err(|err| {
             debug(format!(
-                "Failed to parse the match '{}' as a year: {err:?}",
+                "Failed to parse the match '{}' as a month: {err:?}",
                 caps.get(1).unwrap().as_str()
             ))
         })
@@ -292,7 +291,7 @@ fn extract_datetime_from_asset(file_name: &str, re: &Regex) -> Option<DateTime> 
         .parse()
         .inspect_err(|err| {
             debug(format!(
-                "Failed to parse the match '{}' as a year: {err:?}",
+                "Failed to parse the match '{}' as a day: {err:?}",
                 caps.get(1).unwrap().as_str()
             ))
         })
@@ -301,7 +300,10 @@ fn extract_datetime_from_asset(file_name: &str, re: &Regex) -> Option<DateTime> 
     let date: Date = format!("{year}-{month:02}-{day:02}")
         .parse()
         .inspect_err(|err| {
-            eprintln!("Failed to extract date from {}: {err:?}", file_name);
+            debug(format!(
+                "Failed to extract date from {}: {err:?}",
+                file_name
+            ));
         })
         .ok()?;
 
@@ -314,7 +316,7 @@ fn extract_datetime_from_asset(file_name: &str, re: &Regex) -> Option<DateTime> 
         .parse()
         .inspect_err(|err| {
             debug(format!(
-                "Failed to parse the match '{}' as a year: {err:?}",
+                "Failed to parse the match '{}' as a hour: {err:?}",
                 caps.get(1).unwrap().as_str()
             ))
         })
@@ -326,7 +328,7 @@ fn extract_datetime_from_asset(file_name: &str, re: &Regex) -> Option<DateTime> 
         .parse()
         .inspect_err(|err| {
             debug(format!(
-                "Failed to parse the match '{}' as a year: {err:?}",
+                "Failed to parse the match '{}' as a minute: {err:?}",
                 caps.get(1).unwrap().as_str()
             ))
         })
@@ -338,7 +340,7 @@ fn extract_datetime_from_asset(file_name: &str, re: &Regex) -> Option<DateTime> 
         .parse()
         .inspect_err(|err| {
             debug(format!(
-                "Failed to parse the match '{}' as a year: {err:?}",
+                "Failed to parse the match '{}' as a second: {err:?}",
                 caps.get(1).unwrap().as_str()
             ))
         })
@@ -354,7 +356,6 @@ fn extract_datetime_from_asset(file_name: &str, re: &Regex) -> Option<DateTime> 
         })
         .unwrap_or_default();
 
-    // These lookups should be safe, since the regex matches on exactly 6 characters.
     Some(date.to_datetime(time))
 }
 
@@ -405,7 +406,7 @@ fn current_year() -> u16 {
 mod test {
     use jiff::civil::DateTime;
 
-    use crate::{RE, extract_datetime_from_asset};
+    use crate::{RE, extract_datetime};
 
     #[test]
     fn test() {
@@ -499,14 +500,14 @@ mod test {
                 "20051022_75_1_69dd.jpeg",
                 "2005-10-22 00:00:00".parse().unwrap(),
             ),
-            // TODO: The parser incorrectly extract the time 00:16:00 here.
+            // TODO: The parser incorrectly extracts the time 00:16:00 here.
             // (
             //     "IMG-20260309-WA0016.jpg",
             //     "2026-03-09 00:00:00".parse().unwrap(),
             // ),
         ];
         for (file, expected_moment) in files {
-            let moment = extract_datetime_from_asset(file, &RE).unwrap();
+            let moment = extract_datetime(file, &RE).unwrap();
             assert_eq!(
                 moment, expected_moment,
                 "failed to parse date from {}",
