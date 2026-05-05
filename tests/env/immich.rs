@@ -128,7 +128,7 @@ fn post_search_metadata(request: &mut Request, state: &mut [Asset]) -> Option<Re
                 return None;
             }
 
-            if (index) >= ((offset + 1) * page_size) {
+            if (index) >= (offset + page_size) {
                 return None;
             }
             Some(asset)
@@ -144,7 +144,6 @@ fn post_search_metadata(request: &mut Request, state: &mut [Asset]) -> Option<Re
     }) else {
         return Some(Response::empty(500).boxed());
     };
-    dbg!(&search_results);
 
     Some(Response::from_string(search_results).boxed())
 }
