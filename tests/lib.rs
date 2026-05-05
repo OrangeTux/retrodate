@@ -87,7 +87,7 @@ fn test_app() {
 
     let asset = get_asset_by_id("4", &client).unwrap();
     assert!(asset.exif_info.is_none());
-    let asset = get_asset_by_id("1", &client).unwrap();
+    let asset = get_asset_by_id("5", &client).unwrap();
     assert_eq!(
         asset.exif_info,
         Some(ExifInfo {
