@@ -178,18 +178,32 @@ pub struct Client {
 fn get_assets_by_filename(file_name: &str, client: &Client) -> Result<Vec<Asset>> {
     let url = format!("{}/search/metadata", client.host);
 
-    let body: Search = ureq::post(&url)
-        .header("x-api-key", &client.api_key)
-        .config()
-        .timeout_global(Some(client.timeout))
-        .build()
-        .send_json(HashMap::from([("originalFileName", file_name)]))
-        .map_err(|error| explain_ureq_error(error, &url))?
-        .body_mut()
-        .read_json()
-        .map_err(|error| explain_ureq_error(error, &url))?;
+    let mut assets: Vec<Asset> = Vec::new();
+    let mut page = String::from("1");
 
-    Ok(body.assets.items)
+    loop {
+        let mut body: Search = ureq::post(&url)
+            .header("x-api-key", &client.api_key)
+            .config()
+            .timeout_global(Some(client.timeout))
+            .build()
+            .send_json(HashMap::from([
+                ("originalFileName", file_name),
+                ("page", &page),
+            ]))
+            .map_err(|error| explain_ureq_error(error, &url))?
+            .body_mut()
+            .read_json()
+            .map_err(|error| explain_ureq_error(error, &url))?;
+
+        assets.append(&mut body.assets.items);
+        let Some(next_page) = body.assets.next_page else {
+            break;
+        };
+        page = next_page;
+    }
+
+    Ok(assets)
 }
 
 pub fn get_asset_by_id(id: &str, client: &Client) -> Result<Asset> {
@@ -361,6 +375,11 @@ pub struct Search {
 pub struct Results {
     #[serde(alias = "assets")]
     pub items: Vec<Asset>,
+
+    pub next_page: Option<String>,
+
+    /// The total number of assets that match the query.
+    pub total: usize,
 }
 
 #[derive(Deserialize, Serialize, Debug, Clone)]
@@ -380,6 +399,7 @@ pub struct ExifInfo {
 #[serde(rename_all = "camelCase")]
 pub struct Query {
     pub original_file_name: String,
+    pub page: Option<String>,
 }
 
 #[derive(Deserialize, Serialize, Debug)]
