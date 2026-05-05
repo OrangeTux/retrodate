@@ -1,7 +1,10 @@
-use std::time::{Duration, Instant};
+use std::{
+    sync::atomic::Ordering,
+    time::{Duration, Instant},
+};
 
 use env::Immich;
-use retrodate::{App, Asset, Client, ExifInfo, get_asset_by_id};
+use retrodate::{App, Asset, Client, ExifInfo, VERBOSE, get_asset_by_id};
 use ureq::http::Uri;
 
 mod env;
@@ -37,12 +40,19 @@ fn test_app() {
             original_file_name: String::from("Screenshot_19980927_200215.jpg"),
             exif_info: None,
         },
+        // Asset contains a date but not a time.
+        Asset {
+            id: String::from("5"),
+            original_file_name: String::from("Screenshot_2023-09-27T191315.jpg"),
+            exif_info: None,
+        },
     ];
 
     let immich = Immich::with_assets(assets);
     let addr = immich.listening_address();
     let host: Uri = format!("http://{}/api", addr).parse().unwrap();
 
+    VERBOSE.store(true, Ordering::Relaxed);
     let app = App::builder(host.clone(), String::from("api-key")).build();
 
     let _handle = immich.spawn();
@@ -77,6 +87,13 @@ fn test_app() {
 
     let asset = get_asset_by_id("4", &client).unwrap();
     assert!(asset.exif_info.is_none());
+    let asset = get_asset_by_id("5", &client).unwrap();
+    assert_eq!(
+        asset.exif_info,
+        Some(ExifInfo {
+            date_time_original: Some(String::from("2023-09-27T19:13:15"))
+        })
+    );
 }
 
 // Verify configuration the HTTP timeout works correctly.

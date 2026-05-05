@@ -91,7 +91,7 @@ fn post_search_metadata(request: &mut Request, state: &mut [Asset]) -> Option<Re
         return Some(Response::empty(400).boxed());
     };
 
-    let matches = state
+    let matches: Vec<Asset> = state
         .iter()
         .filter_map(|asset| {
             if asset.original_file_name.contains(&query.original_file_name) {
@@ -102,8 +102,45 @@ fn post_search_metadata(request: &mut Request, state: &mut [Asset]) -> Option<Re
         })
         .collect();
 
+    // The total number of matches.
+    let match_count = matches.len();
+    let page_size = 2;
+    let page: usize = query.page.unwrap_or(String::from("1")).parse().unwrap();
+    let next_page = {
+        if page * page_size < match_count {
+            Some(format!("{}", page + 1))
+        } else {
+            None
+        }
+    };
+
+    // The filtered matches for this page.
+    let matches = matches
+        .into_iter()
+        .enumerate()
+        .filter_map(|(index, asset)| {
+            let offset = (page - 1) * page_size;
+
+            // The pages are starting from 1, whereas
+            // the assets use  zero based indexing.
+
+            if (index) < offset {
+                return None;
+            }
+
+            if (index) >= (offset + page_size) {
+                return None;
+            }
+            Some(asset)
+        })
+        .collect();
+
     let Ok(search_results) = serde_json::to_string_pretty(&Search {
-        assets: Results { items: matches },
+        assets: Results {
+            total: match_count,
+            items: matches,
+            next_page,
+        },
     }) else {
         return Some(Response::empty(500).boxed());
     };
