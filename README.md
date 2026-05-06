@@ -1,6 +1,6 @@
 # Retrodate
 
-Retrodate is an utility to retroactively date images on Immich.
+Retrodate is a utility to retroactively date images on Immich.
 
 Screenshots and images shared via Whatsapp or other media usually lack metadata;
 they don't contain the datetime the images was taken. For "undated" images, Immich uses the upload
