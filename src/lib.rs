@@ -8,19 +8,54 @@ use serde::{Deserialize, Serialize};
 use std::{
     collections::HashMap,
     ops::RangeInclusive,
-    sync::atomic::{AtomicBool, Ordering},
+    sync::{
+        LazyLock,
+        atomic::{AtomicBool, Ordering},
+    },
     time::Duration,
 };
 use ureq::http::Uri;
 
-// TODO: create a function extract_date(haystack: &str, &year) -> Result<Match{Date, substr}}.
-// Match includes the extracted Date and the location in the haystack.
-//
-// Then, we should call a function extract_time(haystack: &str). We should call it twice:
-// one with a substring _before_ the date, and once providing the remainder substring _after_
-// the date match.
 pub static VERBOSE: AtomicBool = AtomicBool::new(false);
+static DATE_RE: LazyLock<Vec<Regex>> = LazyLock::new(|| {
+    vec![
+        //  * YYYYMMDD
+        Regex::new(r#"(?<year>\d{4})(?<month>\d{2})(?<day>\d{2})"#)
+            .expect("This shouldn't panic at runtime."),
+        // YYYY-MM-DD
+        Regex::new(r#"(?<year>\d{4})[[:punct:]]{1}(?<month>\d{1,2})[[:punct:]]{1}(?<day>\d{1,2})"#)
+            .expect("This shouldn't panic at runtime."),
+        //  * DDMMYYYY
+        Regex::new(r#"(?<day>\d{2})(?<month>\d{2})(?<year>\d{4})"#)
+            .expect("This shouldn't panic at runtime."),
+        //  * DD-MM-YYYY
+        Regex::new(r#"(?<day>\d{1,2})[[:punct:]]{1}(?<month>\d{1,2})[[:punct:]]{1}(?<year>\d{4})"#)
+            .expect("This shouldn't panic at runtime."),
+        //  * YYYYDDMM
+        Regex::new(r#"(?<year>\d{4})(?<day>\d{2})(?<month>\d{2})"#)
+            .expect("This shouldn't panic at runtime."),
+        //  * YYYY-DD-MM
+        Regex::new(r#"(?<year>\d{4})[[:punct:]]{1}(?<day>\d{1,2})[[:punct:]]{1}(?<month>\d{1,2})"#)
+            .expect("This shouldn't panic at runtime."),
+        //  * MMDDYYYY
+        Regex::new(r#"(?<month>\d{1,2})(?<day>\d{1,2})(?<year>\d{4})"#)
+            .expect("This shouldn't panic at runtime."),
+        //  * MM-DD-YYYY
+        Regex::new(r#"(?<month>\d{2})[[:punct:]]{1}(?<day>\d{2})[[:punct:]]{1}(?<year>\d{4})"#)
+            .expect("This shouldn't panic at runtime."),
+    ]
+});
 
+static TIME_RE: LazyLock<Vec<Regex>> = LazyLock::new(|| {
+    vec![
+        //  HHMMSS
+        Regex::new(r#"(?<hour>\d{2})(?<minute>\d{2})(?<second>\d{2})"#)
+            .expect("This shouldn't panic at runtime."),
+        // HH-MM-SS
+        Regex::new(r#"(?<hour>\d{2})[[:punct:]]{1}(?<minute>\d{2})[[:punct:]]{1}(?<second>\d{2})"#)
+            .expect("This shouldn't panic at runtime."),
+    ]
+});
 /// Retrodate is a utility to retroactively date images on Immich based on an image's filename.
 ///
 /// This tool queries Immich for all filenames that contain a year, e.g. 2021 in 20210901_115950.jpg.
@@ -283,35 +318,8 @@ fn extract_datetime(file_name: &str) -> Option<DateTime> {
 }
 
 fn extract_date(file_name: &str) -> Option<DateMatch> {
-    let regexes = [
-        //  * YYYYMMDD
-        Regex::new(r#"(?<year>\d{4})(?<month>\d{2})(?<day>\d{2})"#)
-            .expect("This shouldn't panic at runtime."),
-        // YYYY-MM-DD
-        Regex::new(r#"(?<year>\d{4})[[:punct:]]{1}(?<month>\d{1,2})[[:punct:]]{1}(?<day>\d{1,2})"#)
-            .expect("This shouldn't panic at runtime."),
-        //  * DDMMYYYY
-        Regex::new(r#"(?<day>\d{2})(?<month>\d{2})(?<year>\d{4})"#)
-            .expect("This shouldn't panic at runtime."),
-        //  * DD-MM-YYYY
-        Regex::new(r#"(?<day>\d{1,2})[[:punct:]]{1}(?<month>\d{1,2})[[:punct:]]{1}(?<year>\d{4})"#)
-            .expect("This shouldn't panic at runtime."),
-        //  * YYYYDDMM
-        Regex::new(r#"(?<year>\d{4})(?<day>\d{2})(?<month>\d{2})"#)
-            .expect("This shouldn't panic at runtime."),
-        //  * YYYY-DD-MM
-        Regex::new(r#"(?<year>\d{4})[[:punct:]]{1}(?<day>\d{1,2})[[:punct:]]{1}(?<month>\d{1,2})"#)
-            .expect("This shouldn't panic at runtime."),
-        //  * MMDDYYYY
-        Regex::new(r#"(?<month>\d{1,2})(?<day>\d{1,2})(?<year>\d{4})"#)
-            .expect("This shouldn't panic at runtime."),
-        //  * MM-DD-YYYY
-        Regex::new(r#"(?<month>\d{2})[[:punct:]]{1}(?<day>\d{2})[[:punct:]]{1}(?<year>\d{4})"#)
-            .expect("This shouldn't panic at runtime."),
-    ];
-
-    for re in regexes {
-        if let Some(date) = _extract_date(file_name, &re) {
+    for re in &*DATE_RE {
+        if let Some(date) = _extract_date(file_name, re) {
             // The first photograph was made in 1826 (or 1827, historians aren't quite sure).
             // I don't think anyone has older pictures on their Immich server.
             //
@@ -350,17 +358,8 @@ fn _extract_time(file_name: &str, re: &Regex) -> Option<Time> {
     Some(time)
 }
 fn extract_time(file_name: &str) -> Option<Time> {
-    let regexes = [
-        //  HHMMSS
-        Regex::new(r#"(?<hour>\d{2})(?<minute>\d{2})(?<second>\d{2})"#)
-            .expect("This shouldn't panic at runtime."),
-        // HH-MM-SS
-        Regex::new(r#"(?<hour>\d{2})[[:punct:]]{1}(?<minute>\d{2})[[:punct:]]{1}(?<second>\d{2})"#)
-            .expect("This shouldn't panic at runtime."),
-    ];
-
-    for re in regexes {
-        if let Some(time) = _extract_time(file_name, &re) {
+    for re in &*TIME_RE {
+        if let Some(time) = _extract_time(file_name, re) {
             return Some(time);
         }
     }
@@ -378,7 +377,7 @@ fn _extract_date(file_name: &str, re: &Regex) -> Option<DateMatch> {
 
     Some(DateMatch {
         date,
-        end: caps.name("day").unwrap().end(),
+        end: caps.name("day")?.end(),
     })
 }
 
