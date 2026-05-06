@@ -345,15 +345,7 @@ fn _extract_time(file_name: &str, re: &Regex) -> Option<Time> {
     let minute: i8 = caps.name("minute")?.as_str().parse().ok()?;
     let second: i8 = caps.name("second")?.as_str().parse().ok()?;
 
-    let time: Time = format!("{hour:02}:{minute:02}:{second:02}")
-        .parse()
-        .inspect_err(|err| {
-            debug(format!(
-                "Failed to extract the time from {}, defaulting to 00:00:00. The error is: {err:?}",
-                file_name,
-            ));
-        })
-        .ok()?;
+    let time: Time = format!("{hour:02}:{minute:02}:{second:02}").parse().ok()?;
 
     Some(time)
 }
@@ -377,7 +369,9 @@ fn _extract_date(file_name: &str, re: &Regex) -> Option<DateMatch> {
 
     Some(DateMatch {
         date,
-        end: caps.name("day")?.end(),
+        // Whether the date is encoded as YYYY-MM-DD, DD-MM-YYYY or something else,
+        // the 3rd capture group is the last group.
+        end: caps.get(3)?.end(),
     })
 }
 
