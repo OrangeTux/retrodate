@@ -12,10 +12,6 @@ It's either the screenshot was taken or the moment the media was shared.
 This tool extracts the date (and time, if included) from the filename and uses the Immich API to correct
 a pictures exif data.
 
-> [!NOTE]  
-> At the moment, `retrodate` only supports "2021-02-13", "2021.02.13 17:13", "20210213171312", and some
-variations on this format. Inputs starting with the day or month, e.g. 13-02-2021, are not yet supported.
-
 ## Usage
 
 Obtain `retrodate` from the [releases](https://github.com/OrangeTux/retrodate/releases).
