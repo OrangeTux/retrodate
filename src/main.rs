@@ -1,4 +1,5 @@
 use color_eyre::eyre::{Result, WrapErr};
+use jiff::Span;
 use retrodate::{App, Args, VERBOSE};
 use std::{sync::atomic::Ordering, time::Duration};
 
@@ -21,9 +22,21 @@ fn main() -> Result<()> {
         .until_year(args.until_year)
         .http_timeout(Duration::from_secs(args.timeout));
 
-    if args.apply {
-        builder = builder.apply();
+    if args.if_unset {
+        builder = builder.if_unset();
     }
+
+    let threshold = args
+        .threshold
+        .map(|value| value.parse::<Span>())
+        .transpose()
+        .unwrap();
+
+    let builder = match (args.overwrite, threshold) {
+        (false, _) => builder,
+        (true, None) => builder.overwrite(Span::new()),
+        (true, Some(interval)) => builder.overwrite(interval),
+    };
 
     let app = builder.build();
     app.run()
