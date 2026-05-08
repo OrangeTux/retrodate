@@ -4,6 +4,7 @@ use std::{
 };
 
 use env::Immich;
+use jiff::Span;
 use retrodate::{App, Asset, Client, ExifInfo, VERBOSE, get_asset_by_id};
 use ureq::http::Uri;
 
@@ -66,7 +67,10 @@ fn test_app() {
     let asset = get_asset_by_id("1", &client).unwrap();
     assert_eq!(asset.exif_info, None);
 
-    let app = App::builder(host, String::from("api-key")).apply().build();
+    let app = App::builder(host, String::from("api-key"))
+        .overwrite(Span::new())
+        .build();
+
     app.run().unwrap();
     let asset = get_asset_by_id("1", &client).unwrap();
     assert_eq!(
