@@ -144,24 +144,47 @@ impl App {
                 let maybe_date_time_original = asset
                     .exif_info
                     .and_then(|exif_info| {
-                        exif_info
-                            .date_time_original
-                            .map(|datetime| datetime.parse::<DateTime>().ok())
+                        exif_info.date_time_original.map(|datetime| {
+                            datetime
+                                .parse::<DateTime>()
+                                .inspect_err(|err| {
+                                    eprintln!(
+                                        "Failed to extract the datetime from {}: {err:?}",
+                                        asset.original_file_name
+                                    )
+                                })
+                                .ok()
+                        })
                     })
                     .flatten();
 
                 match (self.mode, maybe_date_time_original) {
-                    (Mode::DryRun, _) => {
+                    (Mode::DryRun, None) => {
                         println!(
-                            "Date of {} will be set to {:?}. Run script with --apply to apply the change.",
+                            "Date of {} will be set to {}. Call `retrodate` with --apply to apply the change.",
                             asset.original_file_name, datetime,
                         );
                     }
-                    (Mode::IfUnset, Some(_)) => {
+                    (Mode::DryRun, Some(date_time_original)) => {
+                        println!(
+                            "Date of {} will be changed from {} to {}. Call `retrodate` with --overwrite to apply the change.",
+                            asset.original_file_name, date_time_original, datetime,
+                        );
+                    }
+                    (Mode::IfUnset, Some(date_time_original)) => {
+                        debug(format!(
+                            "Skipping {}, the asset has datetime set {}. Call `retrodate` with --overwrite to replace the existing datetime.",
+                            asset.original_file_name, date_time_original
+                        ));
+
                         continue;
                     }
                     (Mode::IfUnset | Mode::OverWrite(_), None) => {
                         let _ = set_assets_date_time(&asset.id, &datetime, &self.client)?;
+                        debug(format!(
+                            "Date of {} set to {}.",
+                            asset.original_file_name, datetime
+                        ));
                     }
                     (Mode::OverWrite(interval), Some(date_time_original)) => {
                         if (datetime - date_time_original)
@@ -171,7 +194,15 @@ impl App {
                             == core::cmp::Ordering::Greater
                         {
                             let _ = set_assets_date_time(&asset.id, &datetime, &self.client)?;
+                            debug(format!(
+                                "Change date of {} from {} to {}.",
+                                asset.original_file_name, date_time_original, datetime
+                            ));
                         } else {
+                            debug(format!(
+                                "Skipping {}, the time difference between then existing datetime ({}) and the datetime extracted from the filename ({}) doesn't surpass the threshold of {:?}",
+                                asset.original_file_name, date_time_original, datetime, interval
+                            ));
                             continue;
                         }
                     }
