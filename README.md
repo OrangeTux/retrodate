@@ -47,7 +47,7 @@ Alternatively, use `--overwrite` to modify assets that already have a creation d
 ./retrodate --api-key "${API_KEY}" --host "${IMMICH_API}" --overwrite
 Date of Screenshot_20230927_191315.jpg set to 2023-09-27T19:13:15.
 Date of Screenshot_20231001.jpg set to 2023-10-01T00:00:00.
-Date of Screenshot_2023-11-02T041328.jpg set from 1970-01-01T00:00:00 to 2023-11-02T04:13:28.
+Change date of Screenshot_2023-11-02T041328.jpg from 1970-01-01T00:00:00 to 2023-11-02T04:13:28.
 ```
 
 Only touch assets that have 2017, 2018, or 2019 in their file name:
