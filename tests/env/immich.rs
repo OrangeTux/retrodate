@@ -39,7 +39,7 @@ impl Immich {
     pub fn handle_single_request(&mut self) {
         let mut request = self.server.recv().unwrap();
 
-        println!("Received {} {}", request.method(), request.url());
+        // println!("Received {} {}", request.method(), request.url());
 
         if request
             .headers()
