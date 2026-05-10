@@ -86,6 +86,14 @@ Options:
   --help, help      display usage information
 ```
 
+## Contributing
+
+After mutating some code, run `scripts/lint.sh` and `scripts/test.sh` to verify
+correctness.
+
+The release manager should run `scripts/prepare-release.sh` before releasing a
+new version. This script updates the `CHANGELOG.md` and the version number in `Cargo.toml`.
+
 ## License
 
 This project is published under the [MIT license](LICENSE).
