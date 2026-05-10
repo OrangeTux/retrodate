@@ -32,7 +32,7 @@ Date of Screenshot_20231001.jpg will be set to 2023-10-01T00:00:00. Call `retrod
 Date of Screenshot_2023-11-02T041328.jpg will be changed from 1970-01-01T00:00:00 to 2023-11-02T04:13:28. Call `retrodate` with --overwrite to apply the change.
 ```
 
-Run the same command with the flag `--apply` added to apply the changes:
+Run the same command with the flag `--if-unset` added to apply the changes:
 
 ```bash
 ./retrodate --api-key "${API_KEY}" --host "${IMMICH_API}" --if-unset
@@ -40,6 +40,8 @@ Date of Screenshot_20230927_191315.jpg set to 2023-09-27T19:13:15.
 Date of Screenshot_20231001.jpg set to 2023-10-01T00:00:00.
 Skipping of Screenshot_2023-11-02T041328.jpg, the asset has datetime set to 1970-01-01T00:00:00. Call `retrodate` with --overwrite to replace the existing datetime.
 ```
+
+Alternatively, use `--overwrite` to modify assets that already have a creation date.
 
 ```bash
 ./retrodate --api-key "${API_KEY}" --host "${IMMICH_API}" --overwrite
