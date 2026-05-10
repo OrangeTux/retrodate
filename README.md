@@ -35,16 +35,16 @@ Date of Screenshot_2023-11-02T041328.jpg will be changed from 1970-01-01T00:00:0
 Run the same command with the flag `--if-unset` added to apply the changes:
 
 ```bash
-./retrodate --api-key "${API_KEY}" --host "${IMMICH_API}" --if-unset
+./retrodate --api-key "${API_KEY}" --host "${IMMICH_API}" --if-unset -v
 Date of Screenshot_20230927_191315.jpg set to 2023-09-27T19:13:15.
 Date of Screenshot_20231001.jpg set to 2023-10-01T00:00:00.
-Skipping of Screenshot_2023-11-02T041328.jpg, the asset has datetime set to 1970-01-01T00:00:00. Call `retrodate` with --overwrite to replace the existing datetime.
+Skipping Screenshot_2023-11-02T041328.jpg, the asset has datetime set to 1970-01-01T00:00:00. Call `retrodate` with --overwrite to replace the existing datetime.
 ```
 
 Alternatively, use `--overwrite` to modify assets that already have a creation date.
 
 ```bash
-./retrodate --api-key "${API_KEY}" --host "${IMMICH_API}" --overwrite
+./retrodate --api-key "${API_KEY}" --host "${IMMICH_API}" --overwrite -v
 Date of Screenshot_20230927_191315.jpg set to 2023-09-27T19:13:15.
 Date of Screenshot_20231001.jpg set to 2023-10-01T00:00:00.
 Change date of Screenshot_2023-11-02T041328.jpg from 1970-01-01T00:00:00 to 2023-11-02T04:13:28.
@@ -53,7 +53,7 @@ Change date of Screenshot_2023-11-02T041328.jpg from 1970-01-01T00:00:00 to 2023
 Only touch assets that have 2017, 2018, or 2019 in their file name:
 
 ```bash
-./retrodate --api-key "${API_KEY}" --host "${IMMICH_API}" --if-unset --from-year 2017 --until-year 2019
+./retrodate --api-key "${API_KEY}" --host "${IMMICH_API}" --if-unset --from-year 2017 --until-year 2019 -v
 Date of IMG_20180301_131212.jpg set to 2018-03-01T13:12:12.
 Date of 20190720_130508.jpg set to 2019-07-20T13:05:08.
 ```
