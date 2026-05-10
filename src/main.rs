@@ -30,7 +30,9 @@ fn main() -> Result<()> {
         .threshold
         .map(|value| value.parse::<Span>())
         .transpose()
-        .unwrap();
+        .wrap_err_with(|| {
+            "failed to parse the value of --threshold, use a value like '1d' or '24h'".to_string()
+        })?;
 
     let builder = match (args.overwrite, threshold) {
         (false, _) => builder,

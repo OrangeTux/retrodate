@@ -81,7 +81,8 @@ pub struct Args {
     #[argh(switch)]
     pub overwrite: bool,
 
-    /// todo
+    /// maximum allowed time difference when deciding to update an asset's creation date.
+    /// Provide a `jiff::Span` string such as `30m`, `1h`, `2d`, or `1h30m`.
     #[argh(option)]
     pub threshold: Option<String>,
 
@@ -161,7 +162,7 @@ impl App {
                 match (self.mode, maybe_date_time_original) {
                     (Mode::DryRun, None) => {
                         println!(
-                            "Date of {} will be set to {}. Call `retrodate` with --apply to apply the change.",
+                            "Date of {} will be set to {}. Call `retrodate` with --if-unset to apply the change.",
                             asset.original_file_name, datetime,
                         );
                     }
@@ -179,14 +180,14 @@ impl App {
 
                         continue;
                     }
-                    (Mode::IfUnset | Mode::OverWrite(_), None) => {
+                    (Mode::IfUnset | Mode::Overwrite(_), None) => {
                         let _ = set_assets_date_time(&asset.id, &datetime, &self.client)?;
                         debug(format!(
                             "Date of {} set to {}.",
                             asset.original_file_name, datetime
                         ));
                     }
-                    (Mode::OverWrite(interval), Some(date_time_original)) => {
+                    (Mode::Overwrite(interval), Some(date_time_original)) => {
                         if (datetime - date_time_original)
                             .abs()
                             .compare((interval, date_time_original))
@@ -200,7 +201,7 @@ impl App {
                             ));
                         } else {
                             debug(format!(
-                                "Skipping {}, the time difference between then existing datetime ({}) and the datetime extracted from the filename ({}) doesn't surpass the threshold of {:?}",
+                                "Skipping {}, the time difference between the existing datetime ({}) and the datetime extracted from the filename ({}) doesn't surpass the threshold of {:?}",
                                 asset.original_file_name, date_time_original, datetime, interval
                             ));
                             continue;
@@ -219,11 +220,11 @@ pub enum Mode {
     #[default]
     DryRun,
 
-    // Only mutate update assets that are lacking a dateTimeOriginal
+    // Only mutate assets that are lacking a creation date.
     IfUnset,
 
-    // Mutate all assets, both with and without dateTimeOriginal.
-    OverWrite(Span),
+    // Mutate all assets, both with and without creation date.
+    Overwrite(Span),
 }
 
 #[derive(Debug)]
@@ -260,7 +261,7 @@ impl Builder {
     }
 
     pub fn overwrite(mut self, interval: Span) -> Self {
-        self.mode = Mode::OverWrite(interval);
+        self.mode = Mode::Overwrite(interval);
         self
     }
 
