@@ -1,3 +1,12 @@
+## [0.3.0] - 2026-05-11
+
+### Features
+
+- [**breaking**] Add flags --overwrite and --threshold. Rename --apply to --if-unset  ([#22](https://github.com/orangetux/retrodate/issues/22))
+
+### Other
+
+- Use `git cliff` to generate CHANGELOG.md ([#24](https://github.com/orangetux/retrodate/issues/24))
 ## [unreleased]
 
 ### Features
