@@ -6,7 +6,8 @@
 
 ### Other
 
-- X
+- Use `git cliff` to generate CHANGELOG.md
+
 ## [0.2.2] - 2026-05-06
 
 ### Features
