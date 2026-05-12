@@ -62,7 +62,7 @@ static SKIP_RE: LazyLock<Vec<Regex>> = LazyLock::new(|| {
         Regex::new(
             r#"[[:alnum:]]{8}-[[:alnum:]]{4}-[[:alnum:]]{4}-[[:alnum:]]{4}-[[:alnum:]]{12}"#,
         )
-        .expect("This shouldn't panic at runtime"),
+        .expect("This shouldn't panic at runtime."),
     ]
 });
 
@@ -456,12 +456,10 @@ fn extract_date(file_name: &str, forbidden: &[(usize, usize)]) -> Option<DateMat
 
             let overlap = forbidden.iter().any(|(start, end)| {
                 if date.start >= *start && date.start <= *end {
-                    println!("{} overlaps with {}", date.date, &file_name[*start..*end]);
                     return true;
                 }
 
                 if date.end >= *start && date.end <= *end {
-                    println!("{} overlaps with {}", date.date, &file_name[*start..*end]);
                     return true;
                 }
                 false
@@ -494,18 +492,16 @@ fn extract_time(file_name: &str, forbidden: &[(usize, usize)]) -> Option<TimeMat
     if file_name.is_empty() {
         return None;
     }
+    println!("time input {}", file_name);
 
-    println!("Trying to extract time from '{file_name}'");
     for re in &*TIME_RE {
         if let Some(time) = _extract_time(file_name, re) {
             let overlap = forbidden.iter().any(|(start, end)| {
                 if time.start >= *start && time.start <= *end {
-                    println!("{} has overlap", time.time);
                     return true;
                 }
 
                 if time.end >= *start && time.end <= *end {
-                    println!("{} has overlap", time.time);
                     return true;
                 }
                 false
@@ -698,6 +694,10 @@ mod test {
             (
                 "Screenshot_191315_20230927.jpg",
                 "2023-09-27 19:13:15".parse().unwrap(),
+            ),
+            (
+                "20250830_200704.jpg",
+                "2025-08-30 20:07:04".parse().unwrap(),
             ),
         ];
         for (file, expected_moment) in files {
