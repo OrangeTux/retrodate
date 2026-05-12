@@ -61,6 +61,7 @@ fn default_assets() -> Vec<Asset> {
         },
     ]
 }
+
 /// Test the business logic against an Immich fake.
 /// First, this test creates an App instance and verifies that the date of the asset is _not_ set.
 /// Then, an App instance is created with "if_unset()" and the test verifies that the date of the asset _is_ set.
