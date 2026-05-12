@@ -57,6 +57,15 @@ static TIME_RE: LazyLock<Vec<Regex>> = LazyLock::new(|| {
     ]
 });
 
+static SKIP_RE: LazyLock<Vec<Regex>> = LazyLock::new(|| {
+    vec![
+        Regex::new(
+            r#"[[:alnum:]]{8}-[[:alnum:]]{4}-[[:alnum:]]{4}-[[:alnum:]]{4}-[[:alnum:]]{12}"#,
+        )
+        .expect("This shouldn't panic at runtime."),
+    ]
+});
+
 /// Retrodate is a utility to retroactively date images on Immich based on an image's filename.
 ///
 /// This tool queries Immich for all filenames that contain a year, e.g. 2021 in 20210901_115950.jpg.
@@ -387,23 +396,50 @@ fn debug(message: String) {
 #[derive(Debug)]
 struct DateMatch {
     pub date: Date,
+    pub start: usize,
+    // Index where the match ends.
+    pub end: usize,
+}
+
+#[derive(Debug)]
+struct TimeMatch {
+    pub time: Time,
+    pub start: usize,
     // Index where the match ends.
     pub end: usize,
 }
 
 fn extract_datetime(file_name: &str) -> Option<DateTime> {
-    let date_match = extract_date(file_name)?;
+    let mut forbidden: Vec<(usize, usize)> = SKIP_RE
+        .iter()
+        .filter_map(|re| {
+            let _match = re.captures(file_name)?.get(0)?;
+            Some((_match.start(), _match.end()))
+        })
+        .collect();
 
-    let Some(time) = extract_time(&file_name[date_match.end..]) else {
+    let date_match = extract_date(file_name, &forbidden[..])?;
+    forbidden.push((date_match.start, date_match.end));
+
+    let time_match = match extract_time(&file_name[date_match.end..], &forbidden[..]) {
+        Some(time_match) => Some(time_match),
+        None => extract_time(&file_name[..date_match.end], &forbidden),
+    };
+
+    let Some(time) = time_match else {
         debug(format!(
             "Extracted date, but failed to extract time from {file_name}, defaulting time to 00:00:00."
         ));
         return Some(date_match.date.at(0, 0, 0, 0));
     };
-    Some(date_match.date.to_datetime(time))
+    Some(date_match.date.to_datetime(time.time))
 }
 
-fn extract_date(file_name: &str) -> Option<DateMatch> {
+fn extract_date(file_name: &str, forbidden: &[(usize, usize)]) -> Option<DateMatch> {
+    if file_name.is_empty() {
+        return None;
+    }
+
     for re in &*DATE_RE {
         if let Some(date) = _extract_date(file_name, re) {
             // The first photograph was made in 1826 (or 1827, historians aren't quite sure).
@@ -418,13 +454,25 @@ fn extract_date(file_name: &str) -> Option<DateMatch> {
                 continue;
             }
 
-            return Some(date);
+            let overlap = forbidden.iter().any(|(start, end)| {
+                if date.start >= *start && date.start <= *end {
+                    return true;
+                }
+
+                if date.end >= *start && date.end <= *end {
+                    return true;
+                }
+                false
+            });
+            if !overlap {
+                return Some(date);
+            }
         }
     }
     None
 }
 
-fn _extract_time(file_name: &str, re: &Regex) -> Option<Time> {
+fn _extract_time(file_name: &str, re: &Regex) -> Option<TimeMatch> {
     let caps = re.captures(file_name)?;
 
     let hour: i8 = caps.name("hour")?.as_str().parse().ok()?;
@@ -433,12 +481,34 @@ fn _extract_time(file_name: &str, re: &Regex) -> Option<Time> {
 
     let time: Time = format!("{hour:02}:{minute:02}:{second:02}").parse().ok()?;
 
-    Some(time)
+    Some(TimeMatch {
+        time,
+        start: caps.get(1)?.start(),
+        end: caps.get(3)?.end(),
+    })
 }
-fn extract_time(file_name: &str) -> Option<Time> {
+
+fn extract_time(file_name: &str, forbidden: &[(usize, usize)]) -> Option<TimeMatch> {
+    if file_name.is_empty() {
+        return None;
+    }
+    println!("time input {}", file_name);
+
     for re in &*TIME_RE {
         if let Some(time) = _extract_time(file_name, re) {
-            return Some(time);
+            let overlap = forbidden.iter().any(|(start, end)| {
+                if time.start >= *start && time.start <= *end {
+                    return true;
+                }
+
+                if time.end >= *start && time.end <= *end {
+                    return true;
+                }
+                false
+            });
+            if !overlap {
+                return Some(time);
+            }
         }
     }
     None
@@ -455,6 +525,7 @@ fn _extract_date(file_name: &str, re: &Regex) -> Option<DateMatch> {
 
     Some(DateMatch {
         date,
+        start: caps.get(1)?.start(),
         // Whether the date is encoded as YYYY-MM-DD, DD-MM-YYYY or something else,
         // the 3rd capture group is the last group.
         end: caps.get(3)?.end(),
@@ -580,6 +651,10 @@ mod test {
                 "2023-09-27 19:13:15".parse().unwrap(),
             ),
             (
+                "Snapchat_2019-08-12_0516c0a9-5402-f3d7-ae27-19671102f52c-main.jpg",
+                "2019-08-12 00:00:00".parse().unwrap(),
+            ),
+            (
                 "Screenshot_2023-9-7_191315.jpg",
                 "2023-09-07 19:13:15".parse().unwrap(),
             ),
@@ -616,6 +691,14 @@ mod test {
                 "2026-03-09 00:00:00".parse().unwrap(),
             ),
             ("12252012(001).jpg", "2012-12-25 00:00:00".parse().unwrap()),
+            (
+                "Screenshot_191315_20230927.jpg",
+                "2023-09-27 19:13:15".parse().unwrap(),
+            ),
+            (
+                "20250830_200704.jpg",
+                "2025-08-30 20:07:04".parse().unwrap(),
+            ),
         ];
         for (file, expected_moment) in files {
             let datetime =
@@ -626,7 +709,11 @@ mod test {
 
     #[test]
     fn inputs_that_must_fail() {
-        let inputs = vec!["9e8449ee-9f27-440f-949b-69f98a200921.jpg", "2016-0101"];
+        let inputs = vec![
+            "9e8449ee-9f27-440f-949b-69f98a200921.jpg",
+            "2016-0101",
+            "b71d8e68-1709-4d97-b896-592005e2716a.jpg",
+        ];
 
         for input in inputs {
             assert!(
