@@ -6,7 +6,6 @@ use jiff::{
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 use std::{
-    collections::HashMap,
     ops::RangeInclusive,
     sync::{
         LazyLock,
@@ -300,28 +299,36 @@ fn get_assets_by_filename(file_name: &str, client: &Client) -> Result<Vec<Asset>
     let url = format!("{}/search/metadata", client.host);
 
     let mut assets: Vec<Asset> = Vec::new();
-    let mut page = String::from("1");
+    let mut cursor: Option<String> = None;
 
     loop {
+        let request = Query {
+            filter: SearchFilter {
+                original_file_name: Some(StringPatternFilter {
+                    like: Some(file_name.to_string()),
+                }),
+                // Match legacy search behaviour: exclude trashed assets.
+                trashed_at: Some(NullableEq { eq: None }),
+            },
+            cursor: cursor.clone(),
+        };
+
         let mut body: Search = ureq::post(&url)
             .header("x-api-key", &client.api_key)
             .config()
             .timeout_global(Some(client.timeout))
             .build()
-            .send_json(HashMap::from([
-                ("originalFileName", file_name),
-                ("page", &page),
-            ]))
+            .send_json(&request)
             .map_err(|error| explain_ureq_error(error, &url))?
             .body_mut()
             .read_json()
             .map_err(|error| explain_ureq_error(error, &url))?;
 
         assets.append(&mut body.assets.items);
-        let Some(next_page) = body.assets.next_page else {
+        let Some(next_cursor) = body.assets.next_cursor else {
             break;
         };
-        page = next_page;
+        cursor = Some(next_cursor);
     }
 
     Ok(assets)
@@ -473,9 +480,11 @@ pub struct Results {
     #[serde(alias = "assets")]
     pub items: Vec<Asset>,
 
-    pub next_page: Option<String>,
+    /// Cursor for the next page of results (Immich v3.2+ search API).
+    pub next_cursor: Option<String>,
 
     /// The total number of assets that match the query.
+    #[serde(default)]
     pub total: usize,
 }
 
@@ -492,11 +501,36 @@ pub struct Asset {
 pub struct ExifInfo {
     pub date_time_original: Option<String>,
 }
+
+/// Request body for `POST /search/metadata` using Immich's structured search filter.
 #[derive(Deserialize, Serialize, Debug, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct Query {
-    pub original_file_name: String,
-    pub page: Option<String>,
+    pub filter: SearchFilter,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cursor: Option<String>,
+}
+
+#[derive(Deserialize, Serialize, Debug, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct SearchFilter {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub original_file_name: Option<StringPatternFilter>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub trashed_at: Option<NullableEq>,
+}
+
+#[derive(Deserialize, Serialize, Debug, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct StringPatternFilter {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub like: Option<String>,
+}
+
+/// `{ "eq": null }` style filter operand used by Immich's search API.
+#[derive(Deserialize, Serialize, Debug, Clone)]
+pub struct NullableEq {
+    pub eq: Option<String>,
 }
 
 #[derive(Deserialize, Serialize, Debug)]
@@ -561,7 +595,7 @@ mod test {
         "width": 1080
       }
     ],
-    "nextPage": null,
+    "nextCursor": null,
     "total": 1
   }
 }"#;
