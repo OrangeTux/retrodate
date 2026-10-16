@@ -6,7 +6,6 @@ use jiff::{
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 use std::{
-    collections::HashMap,
     ops::RangeInclusive,
     sync::{
         LazyLock,
@@ -73,11 +72,11 @@ pub struct Args {
     #[argh(option)]
     pub host: String,
 
-    /// set the creation date of an asset, only if that asset doesn't have a creation date already.
+    /// set the creation date of an asset, only if that asset doesn't have a creation date already (default mode).
     #[argh(switch)]
     pub if_unset: bool,
 
-    /// set the creation date of an asset, even if that asset has a creation date already. It sets --if-unset.
+    /// set the creation date of an asset, even if that asset has a creation date already. Implies --if-unset.
     #[argh(switch)]
     pub overwrite: bool,
 
@@ -85,6 +84,10 @@ pub struct Args {
     /// Provide a `jiff::Span` string such as `30m`, `1h`, `2d`, or `1h30m`.
     #[argh(option)]
     pub threshold: Option<String>,
+
+    /// apply changes; without this flag, only print what would be done
+    #[argh(switch)]
+    pub apply_changes: bool,
 
     /// explain what is being done
     #[argh(switch, short = 'v')]
@@ -106,6 +109,7 @@ pub struct Args {
 pub struct App {
     client: Client,
     mode: Mode,
+    apply_changes: bool,
 
     year_range: RangeInclusive<u16>,
 }
@@ -137,6 +141,12 @@ impl App {
                 // For example, the needle "2002" matches the time 20:02 in this file name "201704220-2002.jpg".
                 // We'll skip then.
                 if datetime.year() != year as i16 {
+                    debug(format!(
+                        "Skipping {}, parsed year '{}' doesn't match searched year '{}'.",
+                        asset.original_file_name,
+                        datetime.year(),
+                        year
+                    ));
                     continue;
                 }
 
@@ -160,18 +170,6 @@ impl App {
                     .flatten();
 
                 match (self.mode, maybe_date_time_original) {
-                    (Mode::DryRun, None) => {
-                        println!(
-                            "Date of {} will be set to {}. Call `retrodate` with --if-unset to apply the change.",
-                            asset.original_file_name, datetime,
-                        );
-                    }
-                    (Mode::DryRun, Some(date_time_original)) => {
-                        println!(
-                            "Date of {} will be changed from {} to {}. Call `retrodate` with --overwrite to apply the change.",
-                            asset.original_file_name, date_time_original, datetime,
-                        );
-                    }
                     (Mode::IfUnset, Some(date_time_original)) => {
                         debug(format!(
                             "Skipping {}, the asset has datetime set {}. Call `retrodate` with --overwrite to replace the existing datetime.",
@@ -181,11 +179,18 @@ impl App {
                         continue;
                     }
                     (Mode::IfUnset | Mode::Overwrite(_), None) => {
-                        let _ = set_assets_date_time(&asset.id, &datetime, &self.client)?;
-                        debug(format!(
-                            "Date of {} set to {}.",
-                            asset.original_file_name, datetime
-                        ));
+                        if self.apply_changes {
+                            let _ = set_assets_date_time(&asset.id, &datetime, &self.client)?;
+                            debug(format!(
+                                "Date of {} set to {}.",
+                                asset.original_file_name, datetime
+                            ));
+                        } else {
+                            println!(
+                                "Date of {} will be set to {}. Call `retrodate` with --apply-changes to apply the change.",
+                                asset.original_file_name, datetime,
+                            );
+                        }
                     }
                     (Mode::Overwrite(interval), Some(date_time_original)) => {
                         if (datetime - date_time_original)
@@ -194,11 +199,18 @@ impl App {
                             .unwrap()
                             == core::cmp::Ordering::Greater
                         {
-                            let _ = set_assets_date_time(&asset.id, &datetime, &self.client)?;
-                            debug(format!(
-                                "Change date of {} from {} to {}.",
-                                asset.original_file_name, date_time_original, datetime
-                            ));
+                            if self.apply_changes {
+                                let _ = set_assets_date_time(&asset.id, &datetime, &self.client)?;
+                                debug(format!(
+                                    "Changed date of {} from {} to {}.",
+                                    asset.original_file_name, date_time_original, datetime
+                                ));
+                            } else {
+                                println!(
+                                    "Date of {} will be changed from {} to {}. Call `retrodate` with --apply-changes to apply the change.",
+                                    asset.original_file_name, date_time_original, datetime,
+                                );
+                            }
                         } else {
                             debug(format!(
                                 "Skipping {}, the time difference between the existing datetime ({}) and the datetime extracted from the filename ({}) doesn't surpass the threshold of {:?}",
@@ -216,11 +228,8 @@ impl App {
 
 #[derive(Debug, Default, Copy, Clone)]
 pub enum Mode {
-    // Do not mutate assets.
-    #[default]
-    DryRun,
-
     // Only mutate assets that are lacking a creation date.
+    #[default]
     IfUnset,
 
     // Mutate all assets, both with and without creation date.
@@ -234,6 +243,7 @@ pub struct Builder {
     until_year: u16,
 
     mode: Mode,
+    apply_changes: bool,
 }
 
 impl Builder {
@@ -246,12 +256,13 @@ impl Builder {
             },
             from_year: 2000,
             until_year: current_year(),
-            mode: Mode::DryRun,
+            mode: Mode::IfUnset,
+            apply_changes: false,
         }
     }
 
-    pub fn dry_run(mut self) -> Self {
-        self.mode = Mode::DryRun;
+    pub fn apply_changes(mut self) -> Self {
+        self.apply_changes = true;
         self
     }
 
@@ -284,6 +295,7 @@ impl Builder {
         App {
             client: self.client,
             mode: self.mode,
+            apply_changes: self.apply_changes,
             year_range: self.from_year..=self.until_year,
         }
     }
@@ -300,28 +312,36 @@ fn get_assets_by_filename(file_name: &str, client: &Client) -> Result<Vec<Asset>
     let url = format!("{}/search/metadata", client.host);
 
     let mut assets: Vec<Asset> = Vec::new();
-    let mut page = String::from("1");
+    let mut cursor: Option<String> = None;
 
     loop {
+        let request = Query {
+            filter: SearchFilter {
+                original_file_name: Some(StringPatternFilter {
+                    like: Some(file_name.to_string()),
+                }),
+                // Match legacy search behaviour: exclude trashed assets.
+                trashed_at: Some(NullableEq { eq: None }),
+            },
+            cursor: cursor.clone(),
+        };
+
         let mut body: Search = ureq::post(&url)
             .header("x-api-key", &client.api_key)
             .config()
             .timeout_global(Some(client.timeout))
             .build()
-            .send_json(HashMap::from([
-                ("originalFileName", file_name),
-                ("page", &page),
-            ]))
+            .send_json(&request)
             .map_err(|error| explain_ureq_error(error, &url))?
             .body_mut()
             .read_json()
             .map_err(|error| explain_ureq_error(error, &url))?;
 
         assets.append(&mut body.assets.items);
-        let Some(next_page) = body.assets.next_page else {
+        let Some(next_cursor) = body.assets.next_cursor else {
             break;
         };
-        page = next_page;
+        cursor = Some(next_cursor);
     }
 
     Ok(assets)
@@ -473,9 +493,11 @@ pub struct Results {
     #[serde(alias = "assets")]
     pub items: Vec<Asset>,
 
-    pub next_page: Option<String>,
+    /// Cursor for the next page of results (Immich v3.2+ search API).
+    pub next_cursor: Option<String>,
 
     /// The total number of assets that match the query.
+    #[serde(default)]
     pub total: usize,
 }
 
@@ -492,11 +514,36 @@ pub struct Asset {
 pub struct ExifInfo {
     pub date_time_original: Option<String>,
 }
+
+/// Request body for `POST /search/metadata` using Immich's structured search filter.
 #[derive(Deserialize, Serialize, Debug, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct Query {
-    pub original_file_name: String,
-    pub page: Option<String>,
+    pub filter: SearchFilter,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cursor: Option<String>,
+}
+
+#[derive(Deserialize, Serialize, Debug, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct SearchFilter {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub original_file_name: Option<StringPatternFilter>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub trashed_at: Option<NullableEq>,
+}
+
+#[derive(Deserialize, Serialize, Debug, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct StringPatternFilter {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub like: Option<String>,
+}
+
+/// `{ "eq": null }` style filter operand used by Immich's search API.
+#[derive(Deserialize, Serialize, Debug, Clone)]
+pub struct NullableEq {
+    pub eq: Option<String>,
 }
 
 #[derive(Deserialize, Serialize, Debug)]
@@ -561,7 +608,7 @@ mod test {
         "width": 1080
       }
     ],
-    "nextPage": null,
+    "nextCursor": null,
     "total": 1
   }
 }"#;
