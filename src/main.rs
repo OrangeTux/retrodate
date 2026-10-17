@@ -26,6 +26,14 @@ fn main() -> Result<()> {
         builder = builder.if_unset();
     }
 
+    if args.apply_changes {
+        builder = builder.apply_changes();
+    }
+
+    if args.allow_single_digit_date {
+        builder = builder.allow_single_digit_date();
+    }
+
     let threshold = args
         .threshold
         .map(|value| value.parse::<Span>())
