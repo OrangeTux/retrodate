@@ -6,7 +6,6 @@ use jiff::{
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 use std::{
-    collections::HashMap,
     ops::RangeInclusive,
     sync::{
         LazyLock,
@@ -15,45 +14,86 @@ use std::{
     time::Duration,
 };
 use ureq::http::Uri;
+use uuid::Uuid;
 
 pub static VERBOSE: AtomicBool = AtomicBool::new(false);
+
 static DATE_RE: LazyLock<Vec<Regex>> = LazyLock::new(|| {
     vec![
-        //  * YYYYMMDD
-        Regex::new(r#"(?<year>\d{4})(?<month>\d{2})(?<day>\d{2})"#)
+        // YYYYMMDD
+        Regex::new(r#"(?<year>18\d{2}|19\d{2}|20\d{2}|2100)(?<month>0[1-9]|1[0-2])(?<day>0[1-9]|[1-2][0-9]|3[0-1])"#)
             .expect("This shouldn't panic at runtime."),
         // YYYY-MM-DD
-        Regex::new(r#"(?<year>\d{4})[[:punct:]]{1}(?<month>\d{1,2})[[:punct:]]{1}(?<day>\d{1,2})"#)
+        Regex::new(r#"(?<year>18\d{2}|19\d{2}|20\d{2}|2100)-(?<month>0[1-9]|1[0-2])-(?<day>0[1-9]|[1-2][0-9]|3[0-1])"#)
             .expect("This shouldn't panic at runtime."),
-        //  * DDMMYYYY
-        Regex::new(r#"(?<day>\d{2})(?<month>\d{2})(?<year>\d{4})"#)
+        // YYYY.MM.DD
+        Regex::new(r#"(?<year>18\d{2}|19\d{2}|20\d{2}|2100)\.(?<month>0[1-9]|1[0-2])\.(?<day>0[1-9]|[1-2][0-9]|3[0-1])"#)
+        .expect("This shouldn't panic at runtime."),
+        // DDMMYYYY
+        Regex::new(r#"(?<day>0[1-9]|[1-2][0-9]|3[0-1])(?<month>0[1-9]|1[0-2])(?<year>18\d{2}|19\d{2}|20\d{2}|2100)"#)
             .expect("This shouldn't panic at runtime."),
-        //  * DD-MM-YYYY
-        Regex::new(r#"(?<day>\d{1,2})[[:punct:]]{1}(?<month>\d{1,2})[[:punct:]]{1}(?<year>\d{4})"#)
+        // DD-MM-YYYY
+        Regex::new(r#"(?<day>0[1-9]|[1-2][0-9]|3[0-1])-(?<month>0[1-9]|1[0-2])-(?<year>18\d{2}|19\d{2}|20\d{2}|2100)"#)
             .expect("This shouldn't panic at runtime."),
-        //  * YYYYDDMM
-        Regex::new(r#"(?<year>\d{4})(?<day>\d{2})(?<month>\d{2})"#)
+        // DD.MM.YYYY
+        Regex::new(r#"(?<day>0[1-9]|[1-2][0-9]|3[0-1])\.(?<month>0[1-9]|1[0-2])\.(?<year>18\d{2}|19\d{2}|20\d{2}|2100)"#)
             .expect("This shouldn't panic at runtime."),
-        //  * YYYY-DD-MM
-        Regex::new(r#"(?<year>\d{4})[[:punct:]]{1}(?<day>\d{1,2})[[:punct:]]{1}(?<month>\d{1,2})"#)
+        // YYYYDDMM
+        Regex::new(r#"(?<year>18\d{2}|19\d{2}|20\d{2}|2100)(?<day>0[1-9]|[1-2][0-9]|3[0-1])(?<month>0[1-9]|1[0-2])"#)
             .expect("This shouldn't panic at runtime."),
-        //  * MMDDYYYY
-        Regex::new(r#"(?<month>\d{1,2})(?<day>\d{1,2})(?<year>\d{4})"#)
+        // YYYY-DD-MM
+        Regex::new(r#"(?<year>18\d{2}|19\d{2}|20\d{2}|2100)-(?<day>0[1-9]|[1-2][0-9]|3[0-1])-(?<month>0[1-9]|1[0-2])"#)
             .expect("This shouldn't panic at runtime."),
-        //  * MM-DD-YYYY
-        Regex::new(r#"(?<month>\d{2})[[:punct:]]{1}(?<day>\d{2})[[:punct:]]{1}(?<year>\d{4})"#)
+        // YYYY.DD.MM
+        Regex::new(r#"(?<year>18\d{2}|19\d{2}|20\d{2}|2100)\.(?<day>0[1-9]|[1-2][0-9]|3[0-1])\.(?<month>0[1-9]|1[0-2])"#)
+            .expect("This shouldn't panic at runtime."),
+        // MMDDYYYY
+        Regex::new(r#"(?<month>0[1-9]|1[0-2])(?<day>0[1-9]|[1-2][0-9]|3[0-1])(?<year>18\d{2}|19\d{2}|20\d{2}|2100)"#)
+            .expect("This shouldn't panic at runtime."),
+        // MM-DD-YYYY
+        Regex::new(r#"(?<month>0[1-9]|1[0-2])-(?<day>0[1-9]|[1-2][0-9]|3[0-1])-(?<year>18\d{2}|19\d{2}|20\d{2}|2100)"#)
+            .expect("This shouldn't panic at runtime."),
+        // MM.DD.YYYY
+        Regex::new(r#"(?<month>0[1-9]|1[0-2])\.(?<day>0[1-9]|[1-2][0-9]|3[0-1])\.(?<year>18\d{2}|19\d{2}|20\d{2}|2100)"#)
+            .expect("This shouldn't panic at runtime."),
+    ]
+});
+static DATE_SINGLE_DIGIT_RE: LazyLock<Vec<Regex>> = LazyLock::new(|| {
+    vec![
+        // YYYY-[M]M-[D]D
+        Regex::new(r#"(?<year>18\d{2}|19\d{2}|20\d{2}|2100)-(?<month>[1-9]|1[0-2])-(?<day>[1-9]|[1-2][0-9]|3[0-1])"#)
+            .expect("This shouldn't panic at runtime."),
+        // YYYY.[M]M.[D]D
+        Regex::new(r#"(?<year>18\d{2}|19\d{2}|20\d{2}|2100)\.(?<month>[1-9]|1[0-2])\.(?<day>[1-9]|[1-2][0-9]|3[0-1])"#)
+            .expect("This shouldn't panic at runtime."),
+        // [D]D-[M]M-YYYY
+        Regex::new(r#"(?<day>[1-9]|[1-2][0-9]|3[0-1])-(?<month>[1-9]|1[0-2])-(?<year>18\d{2}|19\d{2}|20\d{2}|2100)"#)
+            .expect("This shouldn't panic at runtime."),
+        // [D]D.[M]M.YYYY
+        Regex::new(r#"(?<day>[1-9]|[1-2][0-9]|3[0-1])\.(?<month>[1-9]|1[0-2])\.(?<year>18\d{2}|19\d{2}|20\d{2}|2100)"#)
+        .expect("This shouldn't panic at runtime."),
+        // [M]M-[D]D-YYYY
+        Regex::new(r#"(?<month>[1-9]|1[0-2])-(?<day>[1-9]|[1-2][0-9]|3[0-1])-(?<year>18\d{2}|19\d{2}|20\d{2}|2100)"#)
+            .expect("This shouldn't panic at runtime."),
+        // [M]M.[D]D.YYYY
+        Regex::new(r#"(?<month>[1-9]|1[0-2])\.(?<day>[1-9]|[1-2][0-9]|3[0-1])\.(?<year>18\d{2}|19\d{2}|20\d{2}|2100)"#)
             .expect("This shouldn't panic at runtime."),
     ]
 });
 
 static TIME_RE: LazyLock<Vec<Regex>> = LazyLock::new(|| {
     vec![
-        //  HHMMSS
+        //  HHmmss
         Regex::new(r#"(?<hour>\d{2})(?<minute>\d{2})(?<second>\d{2})"#)
             .expect("This shouldn't panic at runtime."),
-        // HH-MM-SS
+        //  HHmmssSSS
+        Regex::new(r#"(?<hour>\d{2})(?<minute>\d{2})(?<second>\d{2})(?<millisecond>\d{3})"#)
+            .expect("This shouldn't panic at runtime."),
+        // HH-mm-ss
         Regex::new(r#"(?<hour>\d{2})[[:punct:]]{1}(?<minute>\d{2})[[:punct:]]{1}(?<second>\d{2})"#)
             .expect("This shouldn't panic at runtime."),
+        // HHmm
+        Regex::new(r#"(?<hour>\d{2})(?<minute>\d{2})"#).expect("This shouldn't panic at runtime."),
     ]
 });
 
@@ -73,11 +113,11 @@ pub struct Args {
     #[argh(option)]
     pub host: String,
 
-    /// set the creation date of an asset, only if that asset doesn't have a creation date already.
+    /// set the creation date of an asset, only if that asset doesn't have a creation date already (default mode).
     #[argh(switch)]
     pub if_unset: bool,
 
-    /// set the creation date of an asset, even if that asset has a creation date already. It sets --if-unset.
+    /// set the creation date of an asset, even if that asset has a creation date already. Implies --if-unset.
     #[argh(switch)]
     pub overwrite: bool,
 
@@ -85,6 +125,22 @@ pub struct Args {
     /// Provide a `jiff::Span` string such as `30m`, `1h`, `2d`, or `1h30m`.
     #[argh(option)]
     pub threshold: Option<String>,
+
+    /// apply changes; without this flag, only print what would be done
+    #[argh(switch)]
+    pub apply_changes: bool,
+
+    /// also accept dates with single-digit months or days, e.g. 2023-9-7, 2025-12-4, 2026-1-29
+    #[argh(switch)]
+    pub allow_single_digit_date: bool,
+
+    /// also process files whose name (without extension) is a UUID; these are skipped by default
+    #[argh(switch)]
+    pub include_uuid_filenames: bool,
+
+    /// only process assets that belong to the album with this UUID (requires album.read)
+    #[argh(option)]
+    pub album: Option<String>,
 
     /// explain what is being done
     #[argh(switch, short = 'v')]
@@ -106,6 +162,10 @@ pub struct Args {
 pub struct App {
     client: Client,
     mode: Mode,
+    apply_changes: bool,
+    allow_single_digit_date: bool,
+    include_uuid_filenames: bool,
+    album_id: Option<String>,
 
     year_range: RangeInclusive<u16>,
 }
@@ -117,15 +177,30 @@ impl App {
 
     pub fn run(self) -> Result<()> {
         for year in self.year_range {
-            let assets = get_assets_by_filename(&format!("{year}"), &self.client)?;
+            let assets =
+                get_assets_by_filename(&format!("{year}"), self.album_id.as_deref(), &self.client)?;
             debug(format!(
-                "Found {} assets that have {} in their file name.",
+                "Found {} assets that have {} in their file name{}.",
                 assets.len(),
-                year
+                year,
+                self.album_id
+                    .as_ref()
+                    .map(|id| format!(" and belong to album {id}"))
+                    .unwrap_or_default()
             ));
 
             for asset in assets {
-                let Some(datetime) = extract_datetime(&asset.original_file_name) else {
+                if !self.include_uuid_filenames && is_uuid_filename(&asset.original_file_name) {
+                    debug(format!(
+                        "Skipping {}, file name is a UUID. Call `retrodate` with --include-uuid-filenames to process it.",
+                        asset.original_file_name
+                    ));
+                    continue;
+                }
+
+                let Some(datetime) =
+                    extract_datetime(&asset.original_file_name, self.allow_single_digit_date)
+                else {
                     debug(format!(
                         "Skipping {}, file name does not include a date.",
                         asset.original_file_name
@@ -137,6 +212,12 @@ impl App {
                 // For example, the needle "2002" matches the time 20:02 in this file name "201704220-2002.jpg".
                 // We'll skip then.
                 if datetime.year() != year as i16 {
+                    debug(format!(
+                        "Skipping {}, parsed year '{}' doesn't match searched year '{}'.",
+                        asset.original_file_name,
+                        datetime.year(),
+                        year
+                    ));
                     continue;
                 }
 
@@ -160,18 +241,6 @@ impl App {
                     .flatten();
 
                 match (self.mode, maybe_date_time_original) {
-                    (Mode::DryRun, None) => {
-                        println!(
-                            "Date of {} will be set to {}. Call `retrodate` with --if-unset to apply the change.",
-                            asset.original_file_name, datetime,
-                        );
-                    }
-                    (Mode::DryRun, Some(date_time_original)) => {
-                        println!(
-                            "Date of {} will be changed from {} to {}. Call `retrodate` with --overwrite to apply the change.",
-                            asset.original_file_name, date_time_original, datetime,
-                        );
-                    }
                     (Mode::IfUnset, Some(date_time_original)) => {
                         debug(format!(
                             "Skipping {}, the asset has datetime set {}. Call `retrodate` with --overwrite to replace the existing datetime.",
@@ -181,11 +250,18 @@ impl App {
                         continue;
                     }
                     (Mode::IfUnset | Mode::Overwrite(_), None) => {
-                        let _ = set_assets_date_time(&asset.id, &datetime, &self.client)?;
-                        debug(format!(
-                            "Date of {} set to {}.",
-                            asset.original_file_name, datetime
-                        ));
+                        if self.apply_changes {
+                            let _ = set_assets_date_time(&asset.id, &datetime, &self.client)?;
+                            debug(format!(
+                                "Date of {} set to {}.",
+                                asset.original_file_name, datetime
+                            ));
+                        } else {
+                            println!(
+                                "Date of {} will be set to {}. Call `retrodate` with --apply-changes to apply the change.",
+                                asset.original_file_name, datetime,
+                            );
+                        }
                     }
                     (Mode::Overwrite(interval), Some(date_time_original)) => {
                         if (datetime - date_time_original)
@@ -194,11 +270,18 @@ impl App {
                             .unwrap()
                             == core::cmp::Ordering::Greater
                         {
-                            let _ = set_assets_date_time(&asset.id, &datetime, &self.client)?;
-                            debug(format!(
-                                "Change date of {} from {} to {}.",
-                                asset.original_file_name, date_time_original, datetime
-                            ));
+                            if self.apply_changes {
+                                let _ = set_assets_date_time(&asset.id, &datetime, &self.client)?;
+                                debug(format!(
+                                    "Changed date of {} from {} to {}.",
+                                    asset.original_file_name, date_time_original, datetime
+                                ));
+                            } else {
+                                println!(
+                                    "Date of {} will be changed from {} to {}. Call `retrodate` with --apply-changes to apply the change.",
+                                    asset.original_file_name, date_time_original, datetime,
+                                );
+                            }
                         } else {
                             debug(format!(
                                 "Skipping {}, the time difference between the existing datetime ({}) and the datetime extracted from the filename ({}) doesn't surpass the threshold of {:?}",
@@ -216,11 +299,8 @@ impl App {
 
 #[derive(Debug, Default, Copy, Clone)]
 pub enum Mode {
-    // Do not mutate assets.
-    #[default]
-    DryRun,
-
     // Only mutate assets that are lacking a creation date.
+    #[default]
     IfUnset,
 
     // Mutate all assets, both with and without creation date.
@@ -234,6 +314,10 @@ pub struct Builder {
     until_year: u16,
 
     mode: Mode,
+    apply_changes: bool,
+    allow_single_digit_date: bool,
+    include_uuid_filenames: bool,
+    album_id: Option<String>,
 }
 
 impl Builder {
@@ -246,12 +330,31 @@ impl Builder {
             },
             from_year: 2000,
             until_year: current_year(),
-            mode: Mode::DryRun,
+            mode: Mode::IfUnset,
+            apply_changes: false,
+            allow_single_digit_date: false,
+            include_uuid_filenames: false,
+            album_id: None,
         }
     }
 
-    pub fn dry_run(mut self) -> Self {
-        self.mode = Mode::DryRun;
+    pub fn apply_changes(mut self) -> Self {
+        self.apply_changes = true;
+        self
+    }
+
+    pub fn allow_single_digit_date(mut self) -> Self {
+        self.allow_single_digit_date = true;
+        self
+    }
+
+    pub fn include_uuid_filenames(mut self) -> Self {
+        self.include_uuid_filenames = true;
+        self
+    }
+
+    pub fn album(mut self, album_id: String) -> Self {
+        self.album_id = Some(album_id);
         self
     }
 
@@ -284,6 +387,10 @@ impl Builder {
         App {
             client: self.client,
             mode: self.mode,
+            apply_changes: self.apply_changes,
+            allow_single_digit_date: self.allow_single_digit_date,
+            include_uuid_filenames: self.include_uuid_filenames,
+            album_id: self.album_id,
             year_range: self.from_year..=self.until_year,
         }
     }
@@ -296,32 +403,47 @@ pub struct Client {
     pub timeout: Duration,
 }
 
-fn get_assets_by_filename(file_name: &str, client: &Client) -> Result<Vec<Asset>> {
+fn get_assets_by_filename(
+    file_name: &str,
+    album_id: Option<&str>,
+    client: &Client,
+) -> Result<Vec<Asset>> {
     let url = format!("{}/search/metadata", client.host);
 
     let mut assets: Vec<Asset> = Vec::new();
-    let mut page = String::from("1");
+    let mut cursor: Option<String> = None;
 
     loop {
+        let request = Query {
+            filter: SearchFilter {
+                original_file_name: Some(StringPatternFilter {
+                    like: Some(file_name.to_string()),
+                }),
+                // Match legacy search behaviour: exclude trashed assets.
+                trashed_at: Some(NullableEq { eq: None }),
+                album_ids: album_id.map(|id| IdsFilter {
+                    any: Some(vec![id.to_string()]),
+                }),
+            },
+            cursor: cursor.clone(),
+        };
+
         let mut body: Search = ureq::post(&url)
             .header("x-api-key", &client.api_key)
             .config()
             .timeout_global(Some(client.timeout))
             .build()
-            .send_json(HashMap::from([
-                ("originalFileName", file_name),
-                ("page", &page),
-            ]))
+            .send_json(&request)
             .map_err(|error| explain_ureq_error(error, &url))?
             .body_mut()
             .read_json()
             .map_err(|error| explain_ureq_error(error, &url))?;
 
         assets.append(&mut body.assets.items);
-        let Some(next_page) = body.assets.next_page else {
+        let Some(next_cursor) = body.assets.next_cursor else {
             break;
         };
-        page = next_page;
+        cursor = Some(next_cursor);
     }
 
     Ok(assets)
@@ -384,6 +506,15 @@ fn debug(message: String) {
     }
 }
 
+/// Returns true when the filename stem (without extension) is a UUID.
+fn is_uuid_filename(file_name: &str) -> bool {
+    let stem = match file_name.rsplit_once('.') {
+        Some((stem, _)) if !stem.is_empty() => stem,
+        _ => file_name,
+    };
+    Uuid::parse_str(stem).is_ok()
+}
+
 #[derive(Debug)]
 struct DateMatch {
     pub date: Date,
@@ -391,8 +522,8 @@ struct DateMatch {
     pub end: usize,
 }
 
-fn extract_datetime(file_name: &str) -> Option<DateTime> {
-    let date_match = extract_date(file_name)?;
+fn extract_datetime(file_name: &str, allow_single_digit_date: bool) -> Option<DateTime> {
+    let date_match = extract_date(file_name, allow_single_digit_date)?;
 
     let Some(time) = extract_time(&file_name[date_match.end..]) else {
         debug(format!(
@@ -403,8 +534,18 @@ fn extract_datetime(file_name: &str) -> Option<DateTime> {
     Some(date_match.date.to_datetime(time))
 }
 
-fn extract_date(file_name: &str) -> Option<DateMatch> {
-    for re in &*DATE_RE {
+fn extract_date(file_name: &str, allow_single_digit_date: bool) -> Option<DateMatch> {
+    extract_date_with(file_name, &DATE_RE).or_else(|| {
+        if allow_single_digit_date {
+            extract_date_with(file_name, &DATE_SINGLE_DIGIT_RE)
+        } else {
+            None
+        }
+    })
+}
+
+fn extract_date_with(file_name: &str, regexes: &LazyLock<Vec<Regex>>) -> Option<DateMatch> {
+    for re in &**regexes {
         if let Some(date) = _extract_date(file_name, re) {
             // The first photograph was made in 1826 (or 1827, historians aren't quite sure).
             // I don't think anyone has older pictures on their Immich server.
@@ -473,9 +614,11 @@ pub struct Results {
     #[serde(alias = "assets")]
     pub items: Vec<Asset>,
 
-    pub next_page: Option<String>,
+    /// Cursor for the next page of results (Immich v3.2+ search API).
+    pub next_cursor: Option<String>,
 
     /// The total number of assets that match the query.
+    #[serde(default)]
     pub total: usize,
 }
 
@@ -492,11 +635,46 @@ pub struct Asset {
 pub struct ExifInfo {
     pub date_time_original: Option<String>,
 }
+
+/// Request body for `POST /search/metadata` using Immich's structured search filter.
 #[derive(Deserialize, Serialize, Debug, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct Query {
-    pub original_file_name: String,
-    pub page: Option<String>,
+    pub filter: SearchFilter,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cursor: Option<String>,
+}
+
+#[derive(Deserialize, Serialize, Debug, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct SearchFilter {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub original_file_name: Option<StringPatternFilter>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub trashed_at: Option<NullableEq>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub album_ids: Option<IdsFilter>,
+}
+
+#[derive(Deserialize, Serialize, Debug, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct StringPatternFilter {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub like: Option<String>,
+}
+
+/// `{ "any": ["uuid", ...] }` style filter for Immich relationship IDs (albums, people, tags).
+#[derive(Deserialize, Serialize, Debug, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct IdsFilter {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub any: Option<Vec<String>>,
+}
+
+/// `{ "eq": null }` style filter operand used by Immich's search API.
+#[derive(Deserialize, Serialize, Debug, Clone)]
+pub struct NullableEq {
+    pub eq: Option<String>,
 }
 
 #[derive(Deserialize, Serialize, Debug)]
@@ -512,7 +690,7 @@ fn current_year() -> u16 {
 
 #[cfg(test)]
 mod test {
-    use crate::extract_datetime;
+    use crate::{extract_datetime, is_uuid_filename};
     use jiff::civil::DateTime;
 
     #[test]
@@ -561,7 +739,7 @@ mod test {
         "width": 1080
       }
     ],
-    "nextPage": null,
+    "nextCursor": null,
     "total": 1
   }
 }"#;
@@ -578,10 +756,6 @@ mod test {
             (
                 "Screenshot_2023-09-27_191315.jpg",
                 "2023-09-27 19:13:15".parse().unwrap(),
-            ),
-            (
-                "Screenshot_2023-9-7_191315.jpg",
-                "2023-09-07 19:13:15".parse().unwrap(),
             ),
             (
                 "Screenshot_2023.09.27T191315.jpg",
@@ -619,7 +793,30 @@ mod test {
         ];
         for (file, expected_moment) in files {
             let datetime =
-                extract_datetime(file).unwrap_or_else(|| panic!("failed to parse {file}"));
+                extract_datetime(file, false).unwrap_or_else(|| panic!("failed to parse {file}"));
+            assert_eq!(datetime, expected_moment, "failed to parse {file}");
+        }
+    }
+
+    #[test]
+    fn test_extracting_datetime_with_single_digit_date() {
+        let files: Vec<(&str, DateTime)> = vec![
+            (
+                "Screenshot_2023-9-7_191315.jpg",
+                "2023-09-07 19:13:15".parse().unwrap(),
+            ),
+            (
+                "Screenshot_2023.9.7_191315.jpg",
+                "2023-09-07 19:13:15".parse().unwrap(),
+            ),
+        ];
+        for (file, expected_moment) in files {
+            assert!(
+                extract_datetime(file, false).is_none(),
+                "Single-digit date in {file} should not parse without --allow-single-digit-date"
+            );
+            let datetime =
+                extract_datetime(file, true).unwrap_or_else(|| panic!("failed to parse {file}"));
             assert_eq!(datetime, expected_moment, "failed to parse {file}");
         }
     }
@@ -630,9 +827,25 @@ mod test {
 
         for input in inputs {
             assert!(
-                extract_datetime(input).is_none(),
+                extract_datetime(input, false).is_none(),
                 "Invalid {input} was parsed successfully"
             );
+            assert!(
+                extract_datetime(input, true).is_none(),
+                "Invalid {input} was parsed successfully with single-digit dates enabled"
+            );
         }
+    }
+
+    #[test]
+    fn test_is_uuid_filename() {
+        assert!(is_uuid_filename("9e8449ee-9f27-440f-949b-69f98a200921.jpg"));
+        assert!(is_uuid_filename("9E8449EE-9F27-440F-949B-69F98A200921.JPG"));
+        assert!(is_uuid_filename("50684a19-a9b7-4d4d-a8ba-8f04e3928d64"));
+        assert!(!is_uuid_filename("Screenshot_20230927_191315.jpg"));
+        assert!(!is_uuid_filename(
+            "prefix-9e8449ee-9f27-440f-949b-69f98a200921.jpg"
+        ));
+        assert!(!is_uuid_filename("2016-0101"));
     }
 }

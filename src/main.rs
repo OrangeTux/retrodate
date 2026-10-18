@@ -2,6 +2,7 @@ use color_eyre::eyre::{Result, WrapErr};
 use jiff::Span;
 use retrodate::{App, Args, VERBOSE};
 use std::{sync::atomic::Ordering, time::Duration};
+use uuid::Uuid;
 
 fn main() -> Result<()> {
     color_eyre::install()?;
@@ -24,6 +25,24 @@ fn main() -> Result<()> {
 
     if args.if_unset {
         builder = builder.if_unset();
+    }
+
+    if args.apply_changes {
+        builder = builder.apply_changes();
+    }
+
+    if args.allow_single_digit_date {
+        builder = builder.allow_single_digit_date();
+    }
+
+    if args.include_uuid_filenames {
+        builder = builder.include_uuid_filenames();
+    }
+
+    if let Some(album_id) = args.album {
+        Uuid::parse_str(&album_id)
+            .wrap_err_with(|| format!("failed to parse --album '{album_id}' as a UUID"))?;
+        builder = builder.album(album_id);
     }
 
     let threshold = args
