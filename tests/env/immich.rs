@@ -77,7 +77,7 @@ impl Immich {
         })
     }
 }
-/// Handle a HTTP POST on /api/search/metadata
+/// Handle a HTTP POST on /api/search/metadata (Immich v3.2+ filter + cursor shape).
 fn post_search_metadata(request: &mut Request, state: &mut [Asset]) -> Option<ResponseBox> {
     if request.method() != &Method::Post {
         return None;
@@ -91,10 +91,18 @@ fn post_search_metadata(request: &mut Request, state: &mut [Asset]) -> Option<Re
         return Some(Response::empty(400).boxed());
     };
 
+    let needle = query
+        .filter
+        .original_file_name
+        .as_ref()
+        .and_then(|filter| filter.like.as_ref())
+        .cloned()
+        .unwrap_or_default();
+
     let matches: Vec<Asset> = state
         .iter()
         .filter_map(|asset| {
-            if asset.original_file_name.contains(&query.original_file_name) {
+            if asset.original_file_name.contains(&needle) {
                 Some(asset.clone())
             } else {
                 None
@@ -105,10 +113,14 @@ fn post_search_metadata(request: &mut Request, state: &mut [Asset]) -> Option<Re
     // The total number of matches.
     let match_count = matches.len();
     let page_size = 2;
-    let page: usize = query.page.unwrap_or(String::from("1")).parse().unwrap();
-    let next_page = {
-        if page * page_size < match_count {
-            Some(format!("{}", page + 1))
+    let offset: usize = query
+        .cursor
+        .as_deref()
+        .and_then(|cursor| cursor.parse().ok())
+        .unwrap_or(0);
+    let next_cursor = {
+        if offset + page_size < match_count {
+            Some(format!("{}", offset + page_size))
         } else {
             None
         }
@@ -119,16 +131,11 @@ fn post_search_metadata(request: &mut Request, state: &mut [Asset]) -> Option<Re
         .into_iter()
         .enumerate()
         .filter_map(|(index, asset)| {
-            let offset = (page - 1) * page_size;
-
-            // The pages are starting from 1, whereas
-            // the assets use  zero based indexing.
-
-            if (index) < offset {
+            if index < offset {
                 return None;
             }
 
-            if (index) >= (offset + page_size) {
+            if index >= offset + page_size {
                 return None;
             }
             Some(asset)
@@ -139,7 +146,7 @@ fn post_search_metadata(request: &mut Request, state: &mut [Asset]) -> Option<Re
         assets: Results {
             total: match_count,
             items: matches,
-            next_page,
+            next_cursor,
         },
     }) else {
         return Some(Response::empty(500).boxed());

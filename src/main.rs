@@ -26,6 +26,18 @@ fn main() -> Result<()> {
         builder = builder.if_unset();
     }
 
+    if args.apply_changes {
+        builder = builder.apply_changes();
+    }
+
+    if args.allow_single_digit_date {
+        builder = builder.allow_single_digit_date();
+    }
+
+    if args.include_uuid_filenames {
+        builder = builder.include_uuid_filenames();
+    }
+
     let threshold = args
         .threshold
         .map(|value| value.parse::<Span>())

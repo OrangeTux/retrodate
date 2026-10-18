@@ -62,8 +62,8 @@ fn default_assets() -> Vec<Asset> {
     ]
 }
 /// Test the business logic against an Immich fake.
-/// First, this test creates an App instance and verifies that the date of the asset is _not_ set.
-/// Then, an App instance is created with "if_unset()" and the test verifies that the date of the asset _is_ set.
+/// First, this test creates an App instance and verifies that the date of the asset is _not_ set (dry run).
+/// Then, an App instance is created with "apply_changes()" and the test verifies that the date of the asset _is_ set.
 #[test]
 fn test_app_created_with_if_unset() {
     let immich = Immich::with_assets(default_assets());
@@ -86,6 +86,7 @@ fn test_app_created_with_if_unset() {
 
     let app = App::builder(host, String::from("api-key"))
         .if_unset()
+        .apply_changes()
         .build();
 
     app.run().unwrap();
@@ -133,6 +134,7 @@ fn test_app_created_with_overwrite() {
     VERBOSE.store(true, Ordering::Relaxed);
     let app = App::builder(host.clone(), String::from("api-key"))
         .overwrite(Span::new().days(1))
+        .apply_changes()
         .build();
 
     let _handle = immich.spawn();
